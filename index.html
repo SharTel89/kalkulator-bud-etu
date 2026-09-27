@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Budżet Domowy</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Baner przypomnienia o kopii zapasowej -->
+  <div id="backup-banner" class="backup-banner hide-on-print" style="display: none;">
+    <div class="backup-banner-content">
+      <div class="backup-banner-text">
+        <strong>Kopia zapasowa</strong>
+        <span>Nie pobrano jeszcze kopii zapasowej w tym miesiącu. Zalecamy zapisanie pliku z danymi.</span>
+      </div>
+      <div class="backup-banner-actions">
+        <button id="banner-download-btn" class="btn btn-primary-action">Pobierz kopię</button>
+        <button id="banner-dismiss-btn" class="btn btn-secondary">Później</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <header>
+      <h1>Budżet Domowy</h1>
+      <p id="profile-subtitle">Prywatny</p>
+    </header>
+
+    <main class="grid-layout">
+      <!-- Lewa kolumna: Ustawienia i Formularz -->
+      <section class="card left-col">
+        <div class="profile-section hide-on-print">
+          <label for="profile-select"><strong>Aktywny profil:</strong></label>
+          <select id="profile-select" class="btn-select">
+            <option value="private">Konto Prywatne</option>
+            <option value="company">Konto Firmowe</option>
+          </select>
+        </div>
+
+        <div class="initial-balance-section hide-on-print">
+          <label for="initial-balance-input">Saldo początkowe (PLN):</label>
+          <div class="input-inline">
+            <input type="text" id="initial-balance-input" placeholder="0,00" />
+            <button id="save-initial-balance-btn" class="btn">Zapisz</button>
+          </div>
+        </div>
+
+        <!-- Blok statystyk -->
+        <div class="print-stats-wrapper">
+          <div class="stats-grid">
+            <div class="stat-box">
+              <small id="income-label">Przychody (miesiąc)</small>
+              <strong id="total-income" class="income-text">0,00 PLN</strong>
+            </div>
+            <div class="stat-box">
+              <small id="expense-label">Wydatki (miesiąc)</small>
+              <strong id="total-expense" class="expense-text">0,00 PLN</strong>
+            </div>
+            <div class="stat-box">
+              <small id="month-balance-label">Wynik miesiąca</small>
+              <strong id="month-balance">0,00 PLN</strong>
+            </div>
+          </div>
+
+          <div class="total-balance-box">
+            <small>Skumulowane saldo całkowite (z przeniesieniem)</small>
+            <h2 id="total-balance">0,00 PLN</h2>
+          </div>
+        </div>
+
+        <div class="add-transaction-section hide-on-print">
+          <h3>Dodaj wpis</h3>
+          <form id="transaction-form">
+            <input type="text" id="description" placeholder="Nazwa (np. Czynsz, Paliwo, Prąd)" required />
+            <input type="text" id="amount" placeholder="Kwota (PLN)" required />
+            <input type="date" id="date" required />
+            <select id="type">
+              <option value="expense">Wydatek</option>
+              <option value="income">Przychód</option>
+            </select>
+            <button type="submit" class="btn btn-primary-action">Dodaj</button>
+          </form>
+        </div>
+
+        <!-- Eksport / Import / Filtry / PDF -->
+        <div class="export-print-section hide-on-print">
+          <h3>Eksport do PDF</h3>
+          <div class="filter-row">
+            <div>
+              <label for="search-from"><small>Zakres od</small></label>
+              <input type="date" id="search-from" />
+            </div>
+            <div>
+              <label for="search-to"><small>Zakres do</small></label>
+              <input type="date" id="search-to" />
+            </div>
+            <div>
+              <label for="search-type"><small>Typ</small></label>
+              <select id="search-type">
+                <option value="all">Wszystkie</option>
+                <option value="expense">Wydatki</option>
+                <option value="income">Przychody</option>
+              </select>
+            </div>
+          </div>
+          <div class="filter-actions">
+            <button id="search-btn" class="btn">Filtruj</button>
+            <button id="reset-search-btn" class="btn btn-secondary">Resetuj</button>
+          </div>
+          
+          <button id="print-pdf-btn" class="btn btn-pdf">Drukuj / Zapisz do PDF</button>
+
+          <hr />
+
+          <h3>Zarządzanie danymi</h3>
+          <div class="json-actions">
+            <button id="export-json-btn" class="btn">Pobierz kopię (JSON)</button>
+            <button id="import-json-btn" class="btn">Wczytaj kopię (JSON)</button>
+            <input type="file" id="import-file-input" accept=".json" style="display: none;" />
+          </div>
+          <button id="clear-all-btn" class="btn btn-danger" style="margin-top: 10px; width: 100%;">Wyczyszczenie profilu</button>
+        </div>
+      </section>
+
+      <!-- Prawa kolumna: Podsumowania i Lista -->
+      <section class="card right-col">
+        <div class="hide-on-print">
+          <h3>Podsumowanie według nazw / grup</h3>
+          <div id="grouped-summary-container" class="summary-list">
+            <div style="color:#aaa; text-align:center;">Brak danych</div>
+          </div>
+        </div>
+
+        <div class="list-header">
+          <h3>Transakcje</h3>
+          <label class="checkbox-label hide-on-print">
+            <input type="checkbox" id="show-savings-checkbox" />
+            Pokaż wpisy oszczędzania
+          </label>
+        </div>
+
+        <ul id="transaction-list" class="transaction-list">
+          <!-- Transakcje ładowane dynamicznie -->
+        </ul>
+
+        <button id="load-more-btn" class="btn btn-secondary hide-on-print" style="display: none; width: 100%; margin-top: 15px;">Pokaż więcej</button>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal edycji / usuwania transakcji -->
+  <div id="edit-modal" class="modal-overlay hide-on-print" style="display: none;">
+    <div class="modal-card">
+      <h3>Zarządzaj transakcją</h3>
+      
+      <input type="hidden" id="edit-id" />
+      
+      <div class="form-group">
+        <label for="edit-description">Nazwa / Opis:</label>
+        <input type="text" id="edit-description" required />
+      </div>
+
+      <div class="form-group">
+        <label for="edit-amount">Kwota (PLN):</label>
+        <input type="text" id="edit-amount" required />
+      </div>
+
+      <div class="form-group">
+        <label for="edit-date">Data:</label>
+        <input type="date" id="edit-date" required />
+      </div>
+
+      <div class="form-group">
+        <label for="edit-type">Typ transakcji:</label>
+        <select id="edit-type">
+          <option value="expense">Wydatek</option>
+          <option value="income">Przychód</option>
+        </select>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="delete-modal-btn" class="btn-danger">Usuń transakcję</button>
+        <div class="modal-right-actions">
+          <button type="button" id="cancel-modal-btn" class="btn-secondary">Anuluj</button>
+          <button type="button" id="save-modal-btn" class="btn-primary">Zapisz zmiany</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
