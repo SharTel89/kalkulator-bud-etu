@@ -230,6 +230,7 @@ input:focus, select:focus {
   gap: 4px;
 }
 
+/* Ogólne style dla przycisków */
 .btn {
   background: #333;
   color: #fff;
@@ -240,18 +241,21 @@ input:focus, select:focus {
   transition: background 0.2s;
   width: 100%;
   font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn:hover {
   background: #444;
 }
 
-.btn-primary-action {
+.btn-primary, .btn-primary-action {
   background: #007bff;
   color: #fff;
 }
 
-.btn-primary-action:hover {
+.btn-primary:hover, .btn-primary-action:hover {
   background: #0056b3;
 }
 
@@ -288,7 +292,6 @@ input:focus, select:focus {
   background: #0056b3;
 }
 
-/* Przycisk Google Drive dostosowany do stylu wyczyszczenia profilu */
 .btn-gdrive {
   background: #007bff;
   color: #fff;
@@ -326,7 +329,6 @@ input:focus, select:focus {
   flex: 1;
 }
 
-/* Sekcja Google Drive */
 .gdrive-section {
   display: flex;
   flex-direction: column;
@@ -336,65 +338,12 @@ input:focus, select:focus {
 .gdrive-status-box {
   font-size: 0.9rem;
   color: #aaa;
-  background: #121212;
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid #282828;
 }
 
 .gdrive-actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-/* Modal i lista plików Google Drive */
-.gdrive-file-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 300px;
-  overflow-y: auto;
-  padding-right: 5px;
-  margin: 10px 0;
-}
-
-.gdrive-file-item {
-  background: #282828;
-  border: 1px solid #333;
-  padding: 10px 12px;
-  border-radius: 6px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  transition: background-color 0.2s, border-color 0.2s;
-}
-
-.gdrive-file-item:hover {
-  background-color: #303030;
-  border-color: #007bff;
-}
-
-.gdrive-file-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  overflow: hidden;
-}
-
-.gdrive-file-name {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.gdrive-file-date {
-  font-size: 0.75rem;
-  color: #888;
 }
 
 hr {
@@ -612,17 +561,59 @@ hr {
   gap: 6px;
 }
 
+/* Poprawione układy przycisków w modalach */
 .modal-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-top: 10px;
   gap: 10px;
+  width: 100%;
+}
+
+.modal-actions .btn-danger {
+  width: auto;
 }
 
 .modal-right-actions {
   display: flex;
   gap: 10px;
+}
+
+.modal-right-actions .btn {
+  width: auto;
+  min-width: 90px;
+}
+
+.modal-actions-single {
+  justify-content: flex-end;
+}
+
+.modal-actions-single .btn {
+  width: auto;
+}
+
+.gdrive-file-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.gdrive-file-item {
+  background: #282828;
+  padding: 10px;
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.gdrive-file-info {
+  display: flex;
+  flex-direction: column;
 }
 
 @media print {
