@@ -803,7 +803,7 @@ function renderGDriveFileList(files) {
         <strong>${file.name}</strong>
         <small>Utworzono: ${dateStr}</small>
       </div>
-      <button class="btn btn-primary-action" style="padding: 6px 12px; font-size: 0.85rem;">Wczytaj</button>
+      <button class="btn btn-primary" style="padding: 6px 12px; font-size: 0.85rem; width: auto;">Wczytaj</button>
     `;
 
     const loadBtn = li.querySelector('button');
@@ -1107,14 +1107,14 @@ function setupEventListeners() {
 
       const originalText = saveAutosaveBtn.textContent;
       saveAutosaveBtn.textContent = 'Zapisano ✓';
-      saveAutosaveBtn.classList.remove('btn-primary-action');
+      saveAutosaveBtn.classList.remove('btn-primary');
       saveAutosaveBtn.classList.add('btn-success');
       saveAutosaveBtn.disabled = true;
 
       setTimeout(() => {
         saveAutosaveBtn.textContent = originalText;
         saveAutosaveBtn.classList.remove('btn-success');
-        saveAutosaveBtn.classList.add('btn-primary-action');
+        saveAutosaveBtn.classList.add('btn-primary');
         saveAutosaveBtn.disabled = false;
       }, 2000);
     });
