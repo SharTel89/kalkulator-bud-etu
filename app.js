@@ -1,27 +1,46 @@
 // Konfiguracja Bazy Danych IndexedDB
 const DB_NAME = 'BudgetAppDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let db = null;
 
 // Stan aplikacji
 let currentProfile = 'private'; // 'private' lub 'company'
 let transactions = [];
+let recurringExpenses = [];
+let selectedRecurringByProfile = { private: new Set(), company: new Set() };
 let initialBalances = { private: 0, company: 0 };
+let autoSaveConfig = {
+  private: { enabled: false, minAmount: 10, amount: 3 },
+  company: { enabled: false, minAmount: 10, amount: 3 }
+};
+let syncAdrianEnabled = false;
 let displayedCount = 10;
 let currentSearchFilter = null;
 let showSavingsEntries = false;
 let selectedGroups = new Set();
 
+// Zmienna przechowująca identyfikator aktywnego timera toastu
+let toastTimeout = null;
+
+// Zmienna przechowująca aktywny resolver dla modala potwierdzeń showConfirmModal
+let activeConfirmResolve = null;
+
+// --- POMOCNICZE FORMATOWANIE DATY LOKALNEJ (YYYY-MM-DD) ---
+function getLocalDateString(dateObj = new Date()) {
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // --- FORMATOWANIE KWOT ZE SPACJĄ CO 3 CYFRY ---
 function formatCurrency(amount) {
   const num = Number(amount) || 0;
   const parts = num.toFixed(2).split('.');
-  // Wymuszenie spacji co 3 cyfry od końca części całkowitej bez wyjątku dla 4 cyfr
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return `${parts.join(',')} PLN`;
 }
 
-// Funkcja pomocnicza do wprowadzania cyfr w czasie rzeczywistym w polach <input>
 function formatInputField(inputEl) {
   if (!inputEl) return;
   inputEl.addEventListener('input', () => {
@@ -32,17 +51,15 @@ function formatInputField(inputEl) {
       return;
     }
 
-    // Pozwól na dozwolone znaki (cyfry, opcjonalnie jeden minus na początku, kropka/przecinek)
     const isNegative = rawValue.startsWith('-');
     if (isNegative) rawValue = rawValue.substring(1);
 
     const parts = rawValue.split('.');
-    // Usuń nie-cyfry z części całkowitej
     parts[0] = parts[0].replace(/\D/g, '');
     parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
     if (parts.length > 2) {
-      parts.length = 2; // Tylko jeden separator dziesiętny
+      parts.length = 2;
     }
 
     let formatted = parts.join(',');
@@ -69,8 +86,52 @@ function setFormattedInputValue(inputEl, value) {
   inputEl.value = parts.join(',');
 }
 
+// --- FORMATOWANIE NUMERU KONTA (NRB: 2-4-4-4-4-4-4) ---
+function formatBankAccount(account) {
+  if (!account) return '';
+  const clean = account.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  
+  let countryCode = '';
+  let digits = clean;
+  
+  if (clean.startsWith('PL')) {
+    countryCode = 'PL ';
+    digits = clean.substring(2);
+  } else if (/^[A-Z]{2}/.test(clean)) {
+    countryCode = clean.substring(0, 2) + ' ';
+    digits = clean.substring(2);
+  }
+
+  digits = digits.replace(/\D/g, '').slice(0, 26);
+
+  if (digits.length === 0) return countryCode.trim();
+
+  const parts = [];
+  if (digits.length > 0) parts.push(digits.slice(0, 2));
+  for (let i = 2; i < digits.length; i += 4) {
+    parts.push(digits.slice(i, i + 4));
+  }
+
+  return countryCode + parts.join(' ');
+}
+
+function formatAccountInputField(inputEl) {
+  if (!inputEl) return;
+  inputEl.addEventListener('input', () => {
+    const cursorPos = inputEl.selectionStart;
+    const previousLength = inputEl.value.length;
+    
+    inputEl.value = formatBankAccount(inputEl.value);
+
+    const newLength = inputEl.value.length;
+    const diff = newLength - previousLength;
+    inputEl.setSelectionRange(cursorPos + diff, cursorPos + diff);
+  });
+}
+
 // Elementy DOM
-const profileSelect = document.getElementById('profile-select');
+const btnProfilePrivate = document.getElementById('btn-profile-private');
+const btnProfileCompany = document.getElementById('btn-profile-company');
 const profileSubtitle = document.getElementById('profile-subtitle');
 const initialBalanceInput = document.getElementById('initial-balance-input');
 const saveInitialBalanceBtn = document.getElementById('save-initial-balance-btn');
@@ -90,6 +151,38 @@ const amountInput = document.getElementById('amount');
 const dateInput = document.getElementById('date');
 const typeInput = document.getElementById('type');
 
+const syncAdrianWrapper = document.getElementById('sync-adrian-wrapper');
+const syncAdrianCheckbox = document.getElementById('sync-adrian-checkbox');
+
+// Autooszczędzanie - elementy DOM
+const autosaveSection = document.querySelector('.autosave-section');
+const autosaveEnableCheckbox = document.getElementById('autosave-enable-checkbox');
+const autosaveInputsWrapper = document.getElementById('autosave-inputs-wrapper');
+const autosaveMinAmountInput = document.getElementById('autosave-min-amount');
+const autosaveAmountInput = document.getElementById('autosave-amount');
+const saveAutosaveBtn = document.getElementById('save-autosave-btn');
+
+// Notatnik stałych wydatków - elementy DOM
+const recurringForm = document.getElementById('recurring-form');
+const recNameInput = document.getElementById('rec-name');
+const recAmountInput = document.getElementById('rec-amount');
+const recAccountInput = document.getElementById('rec-account');
+const recurringListEl = document.getElementById('recurring-list');
+const selectedRecurringTotalEl = document.getElementById('selected-recurring-total');
+const toggleSelectAllRecBtn = document.getElementById('toggle-select-all-rec-btn');
+const addSelectedRecBtn = document.getElementById('add-selected-rec-btn');
+const deleteSelectedRecBtn = document.getElementById('delete-selected-rec-btn');
+
+// Modal edycji notatnika
+const editRecurringModal = document.getElementById('edit-recurring-modal');
+const editRecIdInput = document.getElementById('edit-rec-id');
+const editRecNameInput = document.getElementById('edit-rec-name');
+const editRecAmountInput = document.getElementById('edit-rec-amount');
+const editRecAccountInput = document.getElementById('edit-rec-account');
+const saveRecModalBtn = document.getElementById('save-rec-modal-btn');
+const cancelRecModalBtn = document.getElementById('cancel-rec-modal-btn');
+const deleteRecModalBtn = document.getElementById('delete-rec-modal-btn');
+
 const transactionList = document.getElementById('transaction-list');
 const loadMoreBtn = document.getElementById('load-more-btn');
 const groupedSummaryContainer = document.getElementById('grouped-summary-container');
@@ -106,7 +199,7 @@ const importJsonBtn = document.getElementById('import-json-btn');
 const importFileInput = document.getElementById('import-file-input');
 const clearAllBtn = document.getElementById('clear-all-btn');
 
-// Elementy modala edycji
+// Elementy modala edycji transakcji
 const editModal = document.getElementById('edit-modal');
 const editIdInput = document.getElementById('edit-id');
 const editDescriptionInput = document.getElementById('edit-description');
@@ -117,7 +210,135 @@ const saveModalBtn = document.getElementById('save-modal-btn');
 const cancelModalBtn = document.getElementById('cancel-modal-btn');
 const deleteModalBtn = document.getElementById('delete-modal-btn');
 
-// --- NORMALIZACJA TEKSTU ---
+// Elementy modala duplikacji transakcji
+const duplicateModal = document.getElementById('duplicate-modal');
+const duplicateIdInput = document.getElementById('duplicate-id');
+const duplicateModalText = document.getElementById('duplicate-modal-text');
+const confirmDuplicateModalBtn = document.getElementById('confirm-duplicate-modal-btn');
+const cancelDuplicateModalBtn = document.getElementById('cancel-duplicate-modal-btn');
+
+// Elementy uniwersalnego modala potwierdzenia
+const confirmModal = document.getElementById('confirm-modal');
+const confirmModalTitle = document.getElementById('confirm-modal-title');
+const confirmModalMessage = document.getElementById('confirm-modal-message');
+const confirmModalOkBtn = document.getElementById('confirm-modal-ok-btn');
+const confirmModalCancelBtn = document.getElementById('confirm-modal-cancel-btn');
+
+// Elementy modala informacyjnego statusu
+const toastStatusModal = document.getElementById('toast-status-modal');
+const toastStatusTitle = document.getElementById('toast-status-title');
+const toastStatusMessage = document.getElementById('toast-status-message');
+
+function hideToastModal() {
+  if (!toastStatusModal) return;
+  toastStatusModal.style.display = 'none';
+  if (toastTimeout) {
+    clearTimeout(toastTimeout);
+    toastTimeout = null;
+  }
+}
+
+// Funkcja wyświetlająca tymczasowy modal informacyjny
+function showToastModal(title, message, isSuccess = true) {
+  if (!toastStatusModal) return;
+
+  if (toastTimeout) {
+    clearTimeout(toastTimeout);
+    toastTimeout = null;
+  }
+
+  const card = toastStatusModal.querySelector('.toast-modal-card');
+  if (card) {
+    card.classList.remove('success', 'error');
+    card.classList.add(isSuccess ? 'success' : 'error');
+  }
+
+  if (toastStatusTitle) toastStatusTitle.textContent = title;
+  if (toastStatusMessage) toastStatusMessage.textContent = message;
+
+  toastStatusModal.style.display = 'flex';
+
+  toastTimeout = setTimeout(() => {
+    hideToastModal();
+  }, 2000);
+}
+
+// Zastąpienie natywnego window.confirm asynchronicznym modalem
+function showConfirmModal(message, title = 'Potwierdzenie') {
+  return new Promise((resolve) => {
+    if (!confirmModal) {
+      resolve(false);
+      return;
+    }
+
+    if (activeConfirmResolve) {
+      activeConfirmResolve(false);
+    }
+    activeConfirmResolve = resolve;
+
+    if (confirmModalTitle) confirmModalTitle.textContent = title;
+    if (confirmModalMessage) confirmModalMessage.textContent = message;
+
+    confirmModal.style.display = 'flex';
+
+    const handleOk = () => {
+      cleanup();
+      activeConfirmResolve = null;
+      resolve(true);
+    };
+
+    const handleCancel = () => {
+      cleanup();
+      activeConfirmResolve = null;
+      resolve(false);
+    };
+
+    const cleanup = () => {
+      confirmModal.style.display = 'none';
+      if (confirmModalOkBtn) confirmModalOkBtn.removeEventListener('click', handleOk);
+      if (confirmModalCancelBtn) confirmModalCancelBtn.removeEventListener('click', handleCancel);
+    };
+
+    if (confirmModalOkBtn) confirmModalOkBtn.addEventListener('click', handleOk);
+    if (confirmModalCancelBtn) confirmModalCancelBtn.addEventListener('click', handleCancel);
+  });
+}
+
+// Zarządzanie zamykaniem modali ESC / kliknięciem w tło
+function closeAllCloseableModals() {
+  hideToastModal();
+  closeEditModal();
+  closeEditRecurringModal();
+  closeDuplicateModal();
+
+  if (confirmModal && confirmModal.style.display !== 'none') {
+    confirmModal.style.display = 'none';
+    if (activeConfirmResolve) {
+      activeConfirmResolve(false);
+      activeConfirmResolve = null;
+    }
+  }
+}
+
+function setupModalCloseListeners() {
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeAllCloseableModals();
+    }
+  });
+
+  const modals = document.querySelectorAll('.modal-overlay');
+  modals.forEach((modal) => {
+    if (modal.id === 'backup-modal') return;
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeAllCloseableModals();
+      }
+    });
+  });
+}
+
 function normalizeText(text) {
   if (!text) return '';
   return text
@@ -126,6 +347,11 @@ function normalizeText(text) {
     .replace(/ł/g, 'l').replace(/Ł/g, 'L')
     .toLowerCase()
     .trim();
+}
+
+// Generuje unikalny klucz dla grupy zależny od jej typu (income/expense) i nazwy
+function getGroupCompositeKey(type, text) {
+  return `${type}:${normalizeText(text)}`;
 }
 
 // --- INDEXEDDB ---
@@ -141,6 +367,9 @@ function initDB() {
       if (!dbInstance.objectStoreNames.contains('settings')) {
         dbInstance.createObjectStore('settings', { keyPath: 'key' });
       }
+      if (!dbInstance.objectStoreNames.contains('recurring')) {
+        dbInstance.createObjectStore('recurring', { keyPath: 'id' });
+      }
     };
 
     request.onsuccess = (e) => {
@@ -148,38 +377,67 @@ function initDB() {
       resolve(db);
     };
 
-    request.onerror = (e) => {
-      console.error('Błąd otwierania IndexedDB:', e.target.error);
-      reject(e.target.error);
-    };
+    request.onerror = (e) => reject(e.target.error);
   });
 }
 
 function loadDataFromDB() {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(['transactions', 'settings'], 'readonly');
+    const tx = db.transaction(['transactions', 'settings', 'recurring'], 'readonly');
     const txStore = tx.objectStore('transactions');
     const settingsStore = tx.objectStore('settings');
+    const recStore = tx.objectStore('recurring');
 
     const reqTx = txStore.getAll();
     const reqBalances = settingsStore.get('initialBalances');
+    const reqAutoSave = settingsStore.get('autoSaveConfig');
+    const reqSyncAdrian = settingsStore.get('syncAdrianEnabled');
+    const reqSelectedRec = settingsStore.get('selectedRecurringByProfile');
+    const reqRec = recStore.getAll();
 
     let loadedTransactions = [];
+    let loadedRecurring = [];
     let loadedBalances = { private: 0, company: 0 };
-
-    reqTx.onsuccess = () => {
-      loadedTransactions = reqTx.result || [];
+    let loadedAutoSave = {
+      private: { enabled: false, minAmount: 10, amount: 3 },
+      company: { enabled: false, minAmount: 10, amount: 3 }
     };
+    let loadedSyncAdrian = false;
+    let loadedSelectedRec = { private: [], company: [] };
 
+    reqTx.onsuccess = () => { loadedTransactions = reqTx.result || []; };
+    reqRec.onsuccess = () => { loadedRecurring = reqRec.result || []; };
     reqBalances.onsuccess = () => {
       if (reqBalances.result && reqBalances.result.value) {
         loadedBalances = reqBalances.result.value;
       }
     };
+    reqAutoSave.onsuccess = () => {
+      if (reqAutoSave.result && reqAutoSave.result.value) {
+        loadedAutoSave = reqAutoSave.result.value;
+      }
+    };
+    reqSyncAdrian.onsuccess = () => {
+      if (reqSyncAdrian.result && reqSyncAdrian.result.value !== undefined) {
+        loadedSyncAdrian = reqSyncAdrian.result.value;
+      }
+    };
+    reqSelectedRec.onsuccess = () => {
+      if (reqSelectedRec.result && reqSelectedRec.result.value) {
+        loadedSelectedRec = reqSelectedRec.result.value;
+      }
+    };
 
     tx.oncomplete = () => {
       transactions = loadedTransactions;
+      recurringExpenses = loadedRecurring;
       initialBalances = loadedBalances;
+      autoSaveConfig = loadedAutoSave;
+      syncAdrianEnabled = loadedSyncAdrian;
+      selectedRecurringByProfile = {
+        private: new Set(loadedSelectedRec.private || []),
+        company: new Set(loadedSelectedRec.company || [])
+      };
       resolve();
     };
 
@@ -190,8 +448,7 @@ function loadDataFromDB() {
 function saveTransactionToDB(transaction) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('transactions', 'readwrite');
-    const store = tx.objectStore('transactions');
-    store.put(transaction);
+    tx.objectStore('transactions').put(transaction);
     tx.oncomplete = () => resolve();
     tx.onerror = (e) => reject(e.target.error);
   });
@@ -200,8 +457,25 @@ function saveTransactionToDB(transaction) {
 function deleteTransactionFromDB(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('transactions', 'readwrite');
-    const store = tx.objectStore('transactions');
-    store.delete(id);
+    tx.objectStore('transactions').delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function saveRecurringToDB(item) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('recurring', 'readwrite');
+    tx.objectStore('recurring').put(item);
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function deleteRecurringFromDB(id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('recurring', 'readwrite');
+    tx.objectStore('recurring').delete(id);
     tx.oncomplete = () => resolve();
     tx.onerror = (e) => reject(e.target.error);
   });
@@ -210,57 +484,88 @@ function deleteTransactionFromDB(id) {
 function saveBalancesToDB() {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('settings', 'readwrite');
-    const store = tx.objectStore('settings');
-    store.put({ key: 'initialBalances', value: initialBalances });
+    tx.objectStore('settings').put({ key: 'initialBalances', value: initialBalances });
     tx.oncomplete = () => resolve();
     tx.onerror = (e) => reject(e.target.error);
   });
 }
 
-function saveAllDataToDB(newTransactions, newBalances) {
+function saveAutoSaveSettingsToDB() {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(['transactions', 'settings'], 'readwrite');
+    const tx = db.transaction('settings', 'readwrite');
+    tx.objectStore('settings').put({ key: 'autoSaveConfig', value: autoSaveConfig });
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function saveSyncAdrianToDB() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('settings', 'readwrite');
+    tx.objectStore('settings').put({ key: 'syncAdrianEnabled', value: syncAdrianEnabled });
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function saveSelectedRecurringToDB() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('settings', 'readwrite');
+    const serializable = {
+      private: Array.from(selectedRecurringByProfile.private || []),
+      company: Array.from(selectedRecurringByProfile.company || [])
+    };
+    tx.objectStore('settings').put({ key: 'selectedRecurringByProfile', value: serializable });
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function saveAllDataToDB(newTransactions, newBalances, newAutoSave, newRecurring = [], newSelectedRec = null, newSyncAdrian = null) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['transactions', 'settings', 'recurring'], 'readwrite');
     const txStore = tx.objectStore('transactions');
     const settingsStore = tx.objectStore('settings');
+    const recStore = tx.objectStore('recurring');
 
     txStore.clear();
+    recStore.clear();
+
     newTransactions.forEach(t => txStore.put(t));
+    newRecurring.forEach(r => recStore.put(r));
+
     settingsStore.put({ key: 'initialBalances', value: newBalances });
+    if (newAutoSave) {
+      settingsStore.put({ key: 'autoSaveConfig', value: newAutoSave });
+    }
+
+    if (newSyncAdrian !== null && newSyncAdrian !== undefined) {
+      settingsStore.put({ key: 'syncAdrianEnabled', value: newSyncAdrian });
+    }
+
+    if (newSelectedRec) {
+      settingsStore.put({ key: 'selectedRecurringByProfile', value: newSelectedRec });
+    }
 
     tx.oncomplete = () => {
       transactions = newTransactions;
+      recurringExpenses = newRecurring;
       initialBalances = newBalances;
+      if (newAutoSave) autoSaveConfig = newAutoSave;
+      if (newSyncAdrian !== null && newSyncAdrian !== undefined) syncAdrianEnabled = newSyncAdrian;
+      if (newSelectedRec) {
+        selectedRecurringByProfile = {
+          private: new Set(newSelectedRec.private || []),
+          company: new Set(newSelectedRec.company || [])
+        };
+      }
       resolve();
     };
     tx.onerror = (e) => reject(e.target.error);
   });
 }
 
-async function migrateFromLocalStorage() {
-  const savedTransactions = localStorage.getItem('budget_transactions');
-  const savedBalances = localStorage.getItem('budget_initial_balances');
-
-  if (savedTransactions || savedBalances) {
-    let oldTx = [];
-    let oldBal = { private: 0, company: 0 };
-
-    try {
-      if (savedTransactions) oldTx = JSON.parse(savedTransactions);
-      if (savedBalances) oldBal = JSON.parse(savedBalances);
-    } catch (e) {
-      console.error('Błąd odczytu danych do migracji', e);
-    }
-
-    if (oldTx.length > 0 || oldBal.private > 0 || oldBal.company > 0) {
-      await saveAllDataToDB(oldTx, oldBal);
-    }
-
-    localStorage.removeItem('budget_transactions');
-    localStorage.removeItem('budget_initial_balances');
-  }
-}
-
-// --- LOGIKA BANERA PRZYPOMINAJĄCEGO O KOPII ---
+// --- LOGIKA MODALA PRZYPOMINAJĄCEGO O KOPII ---
 function getCurrentMonthKey() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -271,69 +576,112 @@ function checkAndRunMonthlyAutoBackup() {
   const isDownloaded = localStorage.getItem(`backup_downloaded_${currentMonthKey}`);
   const isDismissedInSession = sessionStorage.getItem(`backup_dismissed_${currentMonthKey}`);
 
-  const banner = document.getElementById('backup-banner');
-  if (!banner) return;
+  const backupModal = document.getElementById('backup-modal');
+  if (!backupModal) return;
 
-  if (transactions.length > 0 && !isDownloaded && !isDismissedInSession) {
-    banner.style.display = 'block';
+  if ((transactions.length > 0 || recurringExpenses.length > 0) && !isDownloaded && !isDismissedInSession) {
+    backupModal.style.display = 'flex';
   } else {
-    banner.style.display = 'none';
+    backupModal.style.display = 'none';
   }
 }
 
-function setupBannerEvents() {
-  const bannerDownloadBtn = document.getElementById('banner-download-btn');
-  const bannerDismissBtn = document.getElementById('banner-dismiss-btn');
-  const banner = document.getElementById('backup-banner');
+function setupBackupModalEvents() {
+  const downloadBtn = document.getElementById('modal-backup-download-btn');
+  const dismissBtn = document.getElementById('modal-backup-dismiss-btn');
+  const backupModal = document.getElementById('backup-modal');
 
-  if (bannerDownloadBtn) {
-    bannerDownloadBtn.addEventListener('click', () => {
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', () => {
       exportDataJSON();
+      if (backupModal) backupModal.style.display = 'none';
     });
   }
 
-  if (bannerDismissBtn) {
-    bannerDismissBtn.addEventListener('click', () => {
+  if (dismissBtn) {
+    dismissBtn.addEventListener('click', () => {
       const currentMonthKey = getCurrentMonthKey();
       sessionStorage.setItem(`backup_dismissed_${currentMonthKey}`, 'true');
-      if (banner) banner.style.display = 'none';
+      if (backupModal) backupModal.style.display = 'none';
     });
   }
 }
 
 // --- INICJALIZACJA ---
 document.addEventListener('DOMContentLoaded', async () => {
-  if (dateInput) dateInput.valueAsDate = new Date();
+  if (dateInput) dateInput.value = getLocalDateString();
 
   formatInputField(initialBalanceInput);
   formatInputField(amountInput);
   formatInputField(editAmountInput);
+  formatInputField(autosaveMinAmountInput);
+  formatInputField(autosaveAmountInput);
+  formatInputField(recAmountInput);
+  formatInputField(editRecAmountInput);
+
+  // Podpięcie automatycznego formatowania numeru konta
+  formatAccountInputField(recAccountInput);
+  formatAccountInputField(editRecAccountInput);
 
   try {
     await initDB();
-    await migrateFromLocalStorage();
     await loadDataFromDB();
   } catch (err) {
     console.error('Nie udało się załadować IndexedDB:', err);
+    showToastModal('Błąd bazy danych', 'Nie udało się załadować lokalnej bazy IndexedDB.', false);
   }
 
   setupEventListeners();
+  setupModalCloseListeners();
   renderApp();
   checkAndRunMonthlyAutoBackup();
 });
 
-function setupEventListeners() {
-  setupBannerEvents();
+function setProfile(profile) {
+  if (currentProfile === profile) return;
+  currentProfile = profile;
 
-  if (profileSelect) {
-    profileSelect.addEventListener('change', (e) => {
-      currentProfile = e.target.value;
-      if (profileSubtitle) profileSubtitle.textContent = currentProfile === 'private' ? 'Prywatny' : 'Firmowy';
-      displayedCount = 10;
-      currentSearchFilter = null;
-      selectedGroups.clear();
-      resetSearchInputs();
-      renderApp();
+  if (profileSubtitle) {
+    profileSubtitle.textContent = currentProfile === 'private' ? 'Prywatny' : 'Firmowy';
+  }
+
+  if (btnProfilePrivate && btnProfileCompany) {
+    if (currentProfile === 'private') {
+      btnProfilePrivate.classList.add('active');
+      btnProfileCompany.classList.remove('active');
+    } else {
+      btnProfileCompany.classList.add('active');
+      btnProfilePrivate.classList.remove('active');
+    }
+  }
+
+  displayedCount = 10;
+  currentSearchFilter = null;
+  selectedGroups.clear();
+  resetSearchInputs();
+  renderApp();
+}
+
+function setupEventListeners() {
+  setupBackupModalEvents();
+
+  if (toastStatusModal) {
+    toastStatusModal.addEventListener('click', () => {
+      hideToastModal();
+    });
+  }
+
+  if (btnProfilePrivate) {
+    btnProfilePrivate.addEventListener('click', () => setProfile('private'));
+  }
+  if (btnProfileCompany) {
+    btnProfileCompany.addEventListener('click', () => setProfile('company'));
+  }
+
+  if (syncAdrianCheckbox) {
+    syncAdrianCheckbox.addEventListener('change', (e) => {
+      syncAdrianEnabled = e.target.checked;
+      saveSyncAdrianToDB();
     });
   }
 
@@ -343,10 +691,82 @@ function setupEventListeners() {
       initialBalances[currentProfile] = val;
       await saveBalancesToDB();
       renderApp();
+
+      const originalText = saveInitialBalanceBtn.textContent;
+      saveInitialBalanceBtn.textContent = 'Zapisano ✓';
+      saveInitialBalanceBtn.classList.add('btn-success');
+      saveInitialBalanceBtn.disabled = true;
+
+      setTimeout(() => {
+        saveInitialBalanceBtn.textContent = originalText;
+        saveInitialBalanceBtn.classList.remove('btn-success');
+        saveInitialBalanceBtn.disabled = false;
+      }, 2000);
     });
   }
 
   if (transactionForm) transactionForm.addEventListener('submit', handleAddTransaction);
+
+  // Notatnik - obsługa formularza dodawania i akcji grupowych
+  if (recurringForm) {
+    recurringForm.addEventListener('submit', handleAddRecurring);
+  }
+  if (toggleSelectAllRecBtn) {
+    toggleSelectAllRecBtn.addEventListener('click', handleToggleSelectAllRecurring);
+  }
+  if (addSelectedRecBtn) {
+    addSelectedRecBtn.addEventListener('click', handleAddSelectedRecurringAsExpense);
+  }
+  if (deleteSelectedRecBtn) {
+    deleteSelectedRecBtn.addEventListener('click', handleDeleteSelectedRecurring);
+  }
+
+  // Obsługa interfejsu Autooszczędzania
+  if (autosaveEnableCheckbox) {
+    autosaveEnableCheckbox.addEventListener('change', (e) => {
+      const enabled = e.target.checked;
+      autosaveInputsWrapper.style.display = enabled ? 'flex' : 'none';
+      
+      if (autosaveSection) {
+        if (enabled) {
+          autosaveSection.classList.add('autosave-active');
+        } else {
+          autosaveSection.classList.remove('autosave-active');
+        }
+      }
+
+      autoSaveConfig[currentProfile].enabled = enabled;
+      saveAutoSaveSettingsToDB();
+    });
+  }
+
+  if (saveAutosaveBtn) {
+    saveAutosaveBtn.addEventListener('click', async () => {
+      const minAmount = getCleanNumberFromInput(autosaveMinAmountInput);
+      const saveAmount = getCleanNumberFromInput(autosaveAmountInput);
+
+      autoSaveConfig[currentProfile] = {
+        enabled: autosaveEnableCheckbox.checked,
+        minAmount: minAmount,
+        amount: saveAmount
+      };
+
+      await saveAutoSaveSettingsToDB();
+
+      const originalText = saveAutosaveBtn.textContent;
+      saveAutosaveBtn.textContent = 'Zapisano ✓';
+      saveAutosaveBtn.classList.remove('btn-primary-action');
+      saveAutosaveBtn.classList.add('btn-success');
+      saveAutosaveBtn.disabled = true;
+
+      setTimeout(() => {
+        saveAutosaveBtn.textContent = originalText;
+        saveAutosaveBtn.classList.remove('btn-success');
+        saveAutosaveBtn.classList.add('btn-primary-action');
+        saveAutosaveBtn.disabled = false;
+      }, 2000);
+    });
+  }
 
   if (loadMoreBtn) {
     loadMoreBtn.addEventListener('click', () => {
@@ -393,6 +813,120 @@ function setupEventListeners() {
   if (cancelModalBtn) cancelModalBtn.addEventListener('click', closeEditModal);
   if (saveModalBtn) saveModalBtn.addEventListener('click', handleSaveEditModal);
   if (deleteModalBtn) deleteModalBtn.addEventListener('click', handleDeleteFromModal);
+
+  // Modale Notatnika
+  if (cancelRecModalBtn) cancelRecModalBtn.addEventListener('click', closeEditRecurringModal);
+  if (saveRecModalBtn) saveRecModalBtn.addEventListener('click', handleSaveEditRecurringModal);
+  if (deleteRecModalBtn) deleteRecModalBtn.addEventListener('click', handleDeleteFromRecurringModal);
+
+  // Modal Duplikacji
+  if (cancelDuplicateModalBtn) cancelDuplicateModalBtn.addEventListener('click', closeDuplicateModal);
+  if (confirmDuplicateModalBtn) confirmDuplicateModalBtn.addEventListener('click', handleConfirmDuplicate);
+}
+
+// Pomocnicza funkcja dodająca pojedynczy wydatek z obsługą Autooszczędzania oraz opcjonalnej relacji Adrian -> Praca
+async function addExpenseTransaction(description, amount, date = getLocalDateString()) {
+  const mainId = Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5);
+
+  const isCompanyAdrian = currentProfile === 'company' && syncAdrianEnabled && normalizeText(description) === 'adrian';
+  const syncPairId = isCompanyAdrian ? 'sync_' + mainId : null;
+
+  const newTransaction = {
+    id: mainId,
+    profile: currentProfile,
+    description,
+    amount,
+    date,
+    type: 'expense',
+    isSavings: false,
+    syncPairId: syncPairId
+  };
+
+  transactions.push(newTransaction);
+  await saveTransactionToDB(newTransaction);
+
+  // Tworzenie automatycznej połączonej transakcji Przychód "Praca" na profilu prywatnym tylko jeśli opcja jest aktywna
+  if (isCompanyAdrian) {
+    const pairedTransaction = {
+      id: 'paired_' + mainId,
+      profile: 'private',
+      description: 'Praca',
+      amount,
+      date,
+      type: 'income',
+      isSavings: false,
+      syncPairId: syncPairId
+    };
+    transactions.push(pairedTransaction);
+    await saveTransactionToDB(pairedTransaction);
+  }
+
+  const profileAutoSave = autoSaveConfig[currentProfile] || { enabled: false, minAmount: 0, amount: 0 };
+  if (profileAutoSave.enabled && amount >= profileAutoSave.minAmount && profileAutoSave.amount > 0) {
+    const savingsTransaction = {
+      id: `${mainId}_savings`,
+      profile: currentProfile,
+      description: 'Auto-Oszczędzanie',
+      amount: profileAutoSave.amount,
+      date,
+      type: 'expense',
+      isSavings: true,
+      relatedTransactionId: mainId
+    };
+    transactions.push(savingsTransaction);
+    await saveTransactionToDB(savingsTransaction);
+  }
+}
+
+// Funkcje obsługi modala duplikacji
+function openDuplicateModal(id) {
+  const sourceTx = transactions.find(t => t.id === id);
+  if (!sourceTx) return;
+
+  duplicateIdInput.value = id;
+  if (duplicateModalText) {
+    duplicateModalText.textContent = `Czy na pewno chcesz zduplikować transakcję "${sourceTx.description}" (${formatCurrency(sourceTx.amount)}) z dzisiejszą datą?`;
+  }
+  if (duplicateModal) duplicateModal.style.display = 'flex';
+}
+
+function closeDuplicateModal() {
+  if (duplicateModal) duplicateModal.style.display = 'none';
+}
+
+async function handleConfirmDuplicate() {
+  const id = duplicateIdInput.value;
+  await duplicateTransaction(id);
+  closeDuplicateModal();
+}
+
+// Funkcja duplikująca istniejącą transakcję na dzisiejszy dzień
+async function duplicateTransaction(id) {
+  const sourceTx = transactions.find(t => t.id === id);
+  if (!sourceTx) return;
+
+  const todayStr = getLocalDateString();
+
+  if (sourceTx.type === 'expense') {
+    await addExpenseTransaction(sourceTx.description, sourceTx.amount, todayStr);
+  } else {
+    const mainId = Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5);
+    const newTransaction = {
+      id: mainId,
+      profile: currentProfile,
+      description: sourceTx.description,
+      amount: sourceTx.amount,
+      date: todayStr,
+      type: 'income',
+      isSavings: false
+    };
+    transactions.push(newTransaction);
+    await saveTransactionToDB(newTransaction);
+  }
+
+  renderApp();
+  checkAndRunMonthlyAutoBackup();
+  showToastModal('Sukces', 'Transakcja została pomyślnie zduplikowana!', true);
 }
 
 async function handleAddTransaction(e) {
@@ -405,48 +939,309 @@ async function handleAddTransaction(e) {
 
   if (!description || isNaN(amount) || amount <= 0 || !date) return;
 
-  const mainId = Date.now().toString();
-
-  const newTransaction = {
-    id: mainId,
-    profile: currentProfile,
-    description,
-    amount,
-    date,
-    type,
-    isSavings: false
-  };
-
-  transactions.push(newTransaction);
-  await saveTransactionToDB(newTransaction);
-
-  if (type === 'expense' && currentProfile === 'private' && amount >= 10) {
-    const savingsTransaction = {
-      id: `${mainId}_savings`,
+  if (type === 'expense') {
+    await addExpenseTransaction(description, amount, date);
+  } else {
+    const mainId = Date.now().toString();
+    const newTransaction = {
+      id: mainId,
       profile: currentProfile,
-      description: 'Auto-Oszczędzanie',
-      amount: 3.00,
+      description,
+      amount,
       date,
-      type: 'expense',
-      isSavings: true,
-      relatedTransactionId: mainId
+      type: 'income',
+      isSavings: false
     };
-    transactions.push(savingsTransaction);
-    await saveTransactionToDB(savingsTransaction);
+    transactions.push(newTransaction);
+    await saveTransactionToDB(newTransaction);
   }
 
   descriptionInput.value = '';
   amountInput.value = '';
-  dateInput.valueAsDate = new Date();
+  dateInput.value = getLocalDateString();
 
   renderApp();
   checkAndRunMonthlyAutoBackup();
+}
+
+// --- LOGIKA NOTATNIKA STAŁYCH WYDATKÓW ---
+async function handleAddRecurring(e) {
+  e.preventDefault();
+
+  const name = recNameInput.value.trim();
+  const amount = getCleanNumberFromInput(recAmountInput);
+  const account = formatBankAccount(recAccountInput.value);
+
+  if (!name || isNaN(amount) || amount <= 0) return;
+
+  const newItem = {
+    id: Date.now().toString(),
+    profile: currentProfile,
+    name,
+    amount,
+    account
+  };
+
+  recurringExpenses.push(newItem);
+  await saveRecurringToDB(newItem);
+
+  recNameInput.value = '';
+  recAmountInput.value = '';
+  recAccountInput.value = '';
+
+  renderRecurringList();
+  checkAndRunMonthlyAutoBackup();
+}
+
+async function handleToggleSelectAllRecurring() {
+  const profileItems = recurringExpenses.filter(r => (r.profile || 'private') === currentProfile);
+  if (profileItems.length === 0) return;
+
+  const currentSelectedSet = selectedRecurringByProfile[currentProfile];
+  const allSelected = profileItems.every(r => currentSelectedSet.has(r.id));
+
+  if (allSelected) {
+    profileItems.forEach(r => currentSelectedSet.delete(r.id));
+  } else {
+    profileItems.forEach(r => currentSelectedSet.add(r.id));
+  }
+
+  await saveSelectedRecurringToDB();
+  renderRecurringList();
+}
+
+async function handleAddSelectedRecurringAsExpense() {
+  const currentSelectedSet = selectedRecurringByProfile[currentProfile];
+  const selectedItems = recurringExpenses.filter(r => (r.profile || 'private') === currentProfile && currentSelectedSet.has(r.id));
+
+  if (selectedItems.length === 0) {
+    showToastModal('Brak zaznaczonych', 'Zaznacz pozycje w notatniku, aby je dodać.', false);
+    return;
+  }
+
+  const confirmed = await showConfirmModal(
+    `Czy na pewno chcesz dodać zaznaczone pozycje (${selectedItems.length}) jako wydatki?`,
+    'Dodaj zaznaczone jako wydatek'
+  );
+
+  if (!confirmed) return;
+
+  const todayStr = getLocalDateString();
+
+  for (const item of selectedItems) {
+    await addExpenseTransaction(item.name, item.amount, todayStr);
+  }
+
+  renderApp();
+  checkAndRunMonthlyAutoBackup();
+  showToastModal('Sukces', `Dodano zaznaczone wydatki (${selectedItems.length}) do listy transakcji.`, true);
+}
+
+async function handleDeleteSelectedRecurring() {
+  const currentSelectedSet = selectedRecurringByProfile[currentProfile];
+  const selectedIds = Array.from(currentSelectedSet);
+
+  if (selectedIds.length === 0) {
+    showToastModal('Brak zaznaczonych', 'Zaznacz pozycje w notatniku, aby je usunąć.', false);
+    return;
+  }
+
+  const confirmed = await showConfirmModal(
+    `Czy na pewno chcesz usunąć zaznaczone pozycje (${selectedIds.length}) z notatnika?`,
+    'Usuń zaznaczone'
+  );
+
+  if (confirmed) {
+    for (const id of selectedIds) {
+      await deleteRecurringFromDB(id);
+      currentSelectedSet.delete(id);
+    }
+    recurringExpenses = recurringExpenses.filter(r => !selectedIds.includes(r.id));
+
+    await saveSelectedRecurringToDB();
+    renderRecurringList();
+    checkAndRunMonthlyAutoBackup();
+  }
+}
+
+function renderRecurringList() {
+  if (!recurringListEl) return;
+  recurringListEl.innerHTML = '';
+
+  let profileItems = recurringExpenses.filter(r => (r.profile || 'private') === currentProfile);
+
+  // Sortowanie alfabetyczne po nazwie
+  profileItems.sort((a, b) => a.name.localeCompare(b.name, 'pl', { sensitivity: 'base' }));
+
+  if (profileItems.length === 0) {
+    recurringListEl.innerHTML = '<li style="color:#aaa; text-align:center; padding: 15px;">Brak wpisów w notatniku</li>';
+    calculateSelectedRecurringTotal();
+    return;
+  }
+
+  const currentSelectedSet = selectedRecurringByProfile[currentProfile];
+
+  profileItems.forEach(item => {
+    const isChecked = currentSelectedSet.has(item.id);
+    const li = document.createElement('li');
+    li.className = `recurring-item ${isChecked ? 'selected' : ''}`;
+
+    li.innerHTML = `
+      <input type="checkbox" class="recurring-item-checkbox" ${isChecked ? 'checked' : ''} />
+      <div class="rec-info">
+        <strong>${item.name}</strong>
+        <span class="expense-text">${formatCurrency(item.amount)}</span>
+        ${item.account ? `<span class="rec-account">Konto: ${formatBankAccount(item.account)}</span>` : ''}
+      </div>
+      <div class="rec-actions-group">
+        <button class="action-btn add-single-rec-btn" title="Dodaj jako wydatek">+</button>
+        <button class="action-btn edit-rec-btn" title="Edytuj">&#9998;</button>
+      </div>
+    `;
+
+    const checkbox = li.querySelector('.recurring-item-checkbox');
+    checkbox.addEventListener('change', async () => {
+      if (checkbox.checked) {
+        currentSelectedSet.add(item.id);
+      } else {
+        currentSelectedSet.delete(item.id);
+      }
+      await saveSelectedRecurringToDB();
+      renderRecurringList();
+    });
+
+    const addSingleBtn = li.querySelector('.add-single-rec-btn');
+    addSingleBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const todayStr = getLocalDateString();
+      await addExpenseTransaction(item.name, item.amount, todayStr);
+      renderApp();
+      checkAndRunMonthlyAutoBackup();
+      showToastModal('Sukces', `Dodano wydatek "${item.name}" (${formatCurrency(item.amount)}).`, true);
+    });
+
+    const editBtn = li.querySelector('.edit-rec-btn');
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openEditRecurringModal(item.id);
+    });
+
+    recurringListEl.appendChild(li);
+  });
+
+  calculateSelectedRecurringTotal();
+}
+
+function calculateSelectedRecurringTotal() {
+  let sum = 0;
+  const currentSelectedSet = selectedRecurringByProfile[currentProfile];
+
+  recurringExpenses
+    .filter(r => (r.profile || 'private') === currentProfile && currentSelectedSet.has(r.id))
+    .forEach(item => {
+      sum += item.amount;
+    });
+
+  if (selectedRecurringTotalEl) {
+    selectedRecurringTotalEl.textContent = formatCurrency(sum);
+  }
+}
+
+function openEditRecurringModal(id) {
+  const item = recurringExpenses.find(r => r.id === id);
+  if (!item) return;
+
+  editRecIdInput.value = item.id;
+  editRecNameInput.value = item.name;
+  setFormattedInputValue(editRecAmountInput, item.amount);
+  editRecAccountInput.value = formatBankAccount(item.account || '');
+
+  if (editRecurringModal) editRecurringModal.style.display = 'flex';
+}
+
+function closeEditRecurringModal() {
+  if (editRecurringModal) editRecurringModal.style.display = 'none';
+}
+
+async function handleSaveEditRecurringModal() {
+  const id = editRecIdInput.value;
+  const name = editRecNameInput.value.trim();
+  const amount = getCleanNumberFromInput(editRecAmountInput);
+  const account = formatBankAccount(editRecAccountInput.value);
+
+  if (!name || isNaN(amount) || amount <= 0) {
+    return;
+  }
+
+  const index = recurringExpenses.findIndex(r => r.id === id);
+  if (index !== -1) {
+    recurringExpenses[index].name = name;
+    recurringExpenses[index].amount = amount;
+    recurringExpenses[index].account = account;
+
+    await saveRecurringToDB(recurringExpenses[index]);
+    renderRecurringList();
+    closeEditRecurringModal();
+  }
+}
+
+async function handleDeleteFromRecurringModal() {
+  const id = editRecIdInput.value;
+  const item = recurringExpenses.find(r => r.id === id);
+
+  if (!item) return;
+
+  const confirmed = await showConfirmModal(
+    `Czy na pewno chcesz usunąć pozycję "${item.name}" z notatnika?`,
+    'Usuń z notatnika'
+  );
+
+  if (confirmed) {
+    await deleteRecurringFromDB(id);
+    recurringExpenses = recurringExpenses.filter(r => r.id !== id);
+    selectedRecurringByProfile.private.delete(id);
+    selectedRecurringByProfile.company.delete(id);
+
+    await saveSelectedRecurringToDB();
+    renderRecurringList();
+    closeEditRecurringModal();
+  }
 }
 
 function renderApp() {
   if (initialBalanceInput) {
     const val = initialBalances[currentProfile];
     setFormattedInputValue(initialBalanceInput, val);
+  }
+
+  if (syncAdrianWrapper && syncAdrianCheckbox) {
+    if (currentProfile === 'company') {
+      syncAdrianWrapper.style.display = 'flex';
+      syncAdrianCheckbox.checked = syncAdrianEnabled;
+    } else {
+      syncAdrianWrapper.style.display = 'none';
+    }
+  }
+
+  const currentAutoSave = autoSaveConfig[currentProfile] || { enabled: false, minAmount: 10, amount: 3 };
+  if (autosaveEnableCheckbox) {
+    autosaveEnableCheckbox.checked = currentAutoSave.enabled;
+    autosaveInputsWrapper.style.display = currentAutoSave.enabled ? 'flex' : 'none';
+  }
+  
+  if (autosaveSection) {
+    if (currentAutoSave.enabled) {
+      autosaveSection.classList.add('autosave-active');
+    } else {
+      autosaveSection.classList.remove('autosave-active');
+    }
+  }
+
+  if (autosaveMinAmountInput) {
+    setFormattedInputValue(autosaveMinAmountInput, currentAutoSave.minAmount);
+  }
+  if (autosaveAmountInput) {
+    setFormattedInputValue(autosaveAmountInput, currentAutoSave.amount);
   }
 
   const profileTransactions = transactions.filter(t => (t.profile || 'private') === currentProfile);
@@ -458,6 +1253,8 @@ function renderApp() {
 
   const listFiltered = getTimeAndTypeFilteredTransactions(false);
   renderTransactionsList(listFiltered);
+
+  renderRecurringList();
 }
 
 function calculateBalances(profileTransactions) {
@@ -480,8 +1277,8 @@ function calculateBalances(profileTransactions) {
   let totalNet = initialBalances[currentProfile] || 0;
 
   profileTransactions.forEach(t => {
-    const tDate = new Date(t.date);
-    const isCurrentMonth = tDate.getFullYear() === currentYear && tDate.getMonth() === currentMonth;
+    const [year, month] = t.date.split('-').map(Number);
+    const isCurrentMonth = year === currentYear && (month - 1) === currentMonth;
 
     if (t.type === 'income') {
       totalNet += t.amount;
@@ -515,7 +1312,7 @@ function renderGroupedSummary(filteredTransactions) {
 
   filteredTransactions.forEach(t => {
     const rawName = t.isSavings ? 'Auto-Oszczędzanie' : t.description;
-    const groupKey = normalizeText(rawName);
+    const groupKey = getGroupCompositeKey(t.type, rawName);
     const targetGroup = t.type === 'income' ? incomeGroups : expenseGroups;
 
     if (!targetGroup[groupKey]) {
@@ -574,10 +1371,7 @@ function renderGroupedSummary(filteredTransactions) {
         <span class="${colorClass}">${sign}${formatCurrency(item.total)}</span>
       `;
 
-      li.addEventListener('click', () => {
-        toggleGroupSelection(key);
-      });
-
+      li.addEventListener('click', () => toggleGroupSelection(key));
       ul.appendChild(li);
     });
 
@@ -615,12 +1409,12 @@ function getTimeAndTypeFilteredTransactions(ignoreSavingsFilter = false) {
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
     list = list.filter(t => {
-      const d = new Date(t.date);
-      return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+      const [year, month] = t.date.split('-').map(Number);
+      return year === currentYear && (month - 1) === currentMonth;
     });
   }
 
-  list.sort((a, b) => new Date(b.date) - new Date(a.date) || b.id.localeCompare(a.id));
+  list.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   return list;
 }
 
@@ -632,9 +1426,9 @@ function renderTransactionsList(baseFilteredList) {
 
   if (selectedGroups.size > 0) {
     filtered = filtered.filter(t => {
-      const rawKey = t.isSavings ? 'Auto-Oszczędzanie' : t.description;
-      const normalizedKey = normalizeText(rawKey);
-      return selectedGroups.has(normalizedKey);
+      const rawName = t.isSavings ? 'Auto-Oszczędzanie' : t.description;
+      const compositeKey = getGroupCompositeKey(t.type, rawName);
+      return selectedGroups.has(compositeKey);
     });
   }
 
@@ -658,7 +1452,10 @@ function renderTransactionsList(baseFilteredList) {
 
     const actionBtnHtml = isAutoSavings 
       ? '' 
-      : `<button class="action-btn hide-on-print" title="Zarządzaj" onclick="openEditModal('${t.id}')">&#9998;</button>`;
+      : `<div class="transaction-actions hide-on-print">
+          <button class="action-btn duplicate-btn" title="Duplikuj z dzisiejszą datą">&#128203;</button>
+          <button class="action-btn edit-btn" title="Zarządzaj">&#9998;</button>
+         </div>`;
 
     li.innerHTML = `
       <div class="info">
@@ -667,6 +1464,25 @@ function renderTransactionsList(baseFilteredList) {
       </div>
       ${actionBtnHtml}
     `;
+
+    if (!isAutoSavings) {
+      const dupBtn = li.querySelector('.duplicate-btn');
+      if (dupBtn) {
+        dupBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openDuplicateModal(t.id);
+        });
+      }
+
+      const editBtn = li.querySelector('.edit-btn');
+      if (editBtn) {
+        editBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openEditModal(t.id);
+        });
+      }
+    }
+
     transactionList.appendChild(li);
   });
 
@@ -705,7 +1521,6 @@ async function handleSaveEditModal() {
   const newType = editTypeInput ? editTypeInput.value : 'expense';
 
   if (!newDesc || isNaN(newAmount) || newAmount <= 0 || !newDate) {
-    alert('Uzupełnij poprawnie wszystkie pola!');
     return;
   }
 
@@ -719,33 +1534,38 @@ async function handleSaveEditModal() {
 
     await saveTransactionToDB(mainTx);
 
+    // Obsługa synchronizacji powiązanej transakcji (Adrian na firmowym <-> Praca na prywatnym)
+    if (mainTx.syncPairId) {
+      const pairedTx = transactions.find(t => t.syncPairId === mainTx.syncPairId && t.id !== id);
+      if (pairedTx) {
+        pairedTx.amount = newAmount;
+        pairedTx.date = newDate;
+        await saveTransactionToDB(pairedTx);
+      }
+    }
+
     const profile = mainTx.profile || 'private';
     const relatedIndex = transactions.findIndex(t => t.relatedTransactionId === id);
+    const profileAutoSave = autoSaveConfig[profile] || { enabled: false, minAmount: 0, amount: 0 };
 
-    if (profile === 'private') {
-      if (newType === 'expense' && newAmount >= 10) {
-        if (relatedIndex !== -1) {
-          transactions[relatedIndex].date = newDate;
-          await saveTransactionToDB(transactions[relatedIndex]);
-        } else {
-          const newSavings = {
-            id: `${id}_savings`,
-            profile: 'private',
-            description: 'Auto-Oszczędzanie',
-            amount: 3.00,
-            date: newDate,
-            type: 'expense',
-            isSavings: true,
-            relatedTransactionId: id
-          };
-          transactions.push(newSavings);
-          await saveTransactionToDB(newSavings);
-        }
+    if (newType === 'expense' && profileAutoSave.enabled && newAmount >= profileAutoSave.minAmount && profileAutoSave.amount > 0) {
+      if (relatedIndex !== -1) {
+        transactions[relatedIndex].date = newDate;
+        transactions[relatedIndex].amount = profileAutoSave.amount;
+        await saveTransactionToDB(transactions[relatedIndex]);
       } else {
-        if (relatedIndex !== -1) {
-          const removed = transactions.splice(relatedIndex, 1)[0];
-          await deleteTransactionFromDB(removed.id);
-        }
+        const newSavings = {
+          id: `${id}_savings`,
+          profile: profile,
+          description: 'Auto-Oszczędzanie',
+          amount: profileAutoSave.amount,
+          date: newDate,
+          type: 'expense',
+          isSavings: true,
+          relatedTransactionId: id
+        };
+        transactions.push(newSavings);
+        await saveTransactionToDB(newSavings);
       }
     } else {
       if (relatedIndex !== -1) {
@@ -765,7 +1585,21 @@ async function handleDeleteFromModal() {
   
   if (!item) return;
 
-  if (confirm(`Czy na pewno chcesz usunąć transakcję "${item.description}" na kwotę ${formatCurrency(item.amount)}?`)) {
+  const confirmed = await showConfirmModal(
+    `Czy na pewno chcesz usunąć transakcję "${item.description}" na kwotę ${formatCurrency(item.amount)}?`,
+    'Usuń transakcję'
+  );
+
+  if (confirmed) {
+    // Usunięcie synchronizowanej drugiej połowy pary
+    if (item.syncPairId) {
+      const pairedTx = transactions.find(t => t.syncPairId === item.syncPairId && t.id !== id);
+      if (pairedTx) {
+        await deleteTransactionFromDB(pairedTx.id);
+        transactions = transactions.filter(t => t.id !== pairedTx.id);
+      }
+    }
+
     const relatedIndex = transactions.findIndex(t => t.relatedTransactionId === id);
     if (relatedIndex !== -1) {
       const relatedId = transactions[relatedIndex].id;
@@ -809,40 +1643,83 @@ function resetSearchInputs() {
 function exportDataJSON() {
   const exportPayload = {
     initialBalances: initialBalances,
-    transactions: transactions
+    autoSaveConfig: autoSaveConfig,
+    syncAdrianEnabled: syncAdrianEnabled,
+    transactions: transactions,
+    recurringExpenses: recurringExpenses,
+    selectedRecurringByProfile: {
+      private: Array.from(selectedRecurringByProfile.private || []),
+      company: Array.from(selectedRecurringByProfile.company || [])
+    }
   };
 
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
+  const jsonString = JSON.stringify(exportPayload, null, 2);
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const objectUrl = URL.createObjectURL(blob);
+
   const downloadAnchor = document.createElement('a');
-  downloadAnchor.setAttribute("href", dataStr);
-  downloadAnchor.setAttribute("download", `budzet_domowy_kopia_${new Date().toISOString().slice(0,10)}.json`);
+  downloadAnchor.setAttribute("href", objectUrl);
+  downloadAnchor.setAttribute("download", `budzet_domowy_kopia_${getLocalDateString()}.json`);
   document.body.appendChild(downloadAnchor);
   downloadAnchor.click();
   downloadAnchor.remove();
 
+  setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 1000);
+
   const currentMonthKey = getCurrentMonthKey();
   localStorage.setItem(`backup_downloaded_${currentMonthKey}`, 'true');
 
-  const banner = document.getElementById('backup-banner');
-  if (banner) banner.style.display = 'none';
+  const backupModal = document.getElementById('backup-modal');
+  if (backupModal) backupModal.style.display = 'none';
 }
 
-function importDataJSON(e) {
+async function importDataJSON(e) {
   const file = e.target.files[0];
   if (!file) return;
+
+  const confirmed = await showConfirmModal(
+    'Wczytanie kopii zapasowej zastąpi dotychczasowe dane. Czy chcesz kontynuować?',
+    'Wczytaj kopię JSON'
+  );
+
+  if (!confirmed) {
+    e.target.value = '';
+    return;
+  }
 
   const reader = new FileReader();
   reader.onload = async (event) => {
     try {
       const parsed = JSON.parse(event.target.result);
       let importedTransactions = [];
+      let importedRecurring = [];
       let importedBalances = { private: 0, company: 0 };
+      let importedAutoSave = {
+        private: { enabled: false, minAmount: 10, amount: 3 },
+        company: { enabled: false, minAmount: 10, amount: 3 }
+      };
+      let importedSyncAdrian = false;
+      let importedSelectedRec = { private: [], company: [] };
 
-      if (parsed && (parsed.initialBalances !== undefined || parsed.transactions !== undefined)) {
+      if (parsed && (parsed.initialBalances !== undefined || parsed.transactions !== undefined || parsed.autoSaveConfig !== undefined || parsed.recurringExpenses !== undefined || parsed.selectedRecurringByProfile !== undefined)) {
         if (parsed.initialBalances) {
           importedBalances = {
             private: parseFloat(parsed.initialBalances.private) || 0,
             company: parseFloat(parsed.initialBalances.company) || 0
+          };
+        }
+        if (parsed.autoSaveConfig) {
+          importedAutoSave = parsed.autoSaveConfig;
+        }
+        if (parsed.syncAdrianEnabled !== undefined) {
+          importedSyncAdrian = !!parsed.syncAdrianEnabled;
+        }
+        if (parsed.selectedRecurringByProfile) {
+          importedSelectedRec = {
+            private: Array.isArray(parsed.selectedRecurringByProfile.private) ? parsed.selectedRecurringByProfile.private : [],
+            company: Array.isArray(parsed.selectedRecurringByProfile.company) ? parsed.selectedRecurringByProfile.company : []
           };
         }
         if (Array.isArray(parsed.transactions)) {
@@ -854,26 +1731,15 @@ function importDataJSON(e) {
             isSavings: !!t.isSavings
           }));
         }
-      } else if (parsed && parsed.profiles) {
-        Object.keys(parsed.profiles).forEach(profileKey => {
-          const profileData = parsed.profiles[profileKey];
-          if (profileData.initialBalance !== undefined) {
-            importedBalances[profileKey] = parseFloat(profileData.initialBalance) || 0;
-          }
-          if (Array.isArray(profileData.transactions)) {
-            profileData.transactions.forEach((item, index) => {
-              importedTransactions.push({
-                id: item.id || `${Date.now()}_${profileKey}_${index}`,
-                profile: profileKey,
-                description: item.title || item.description || 'Bez nazwy',
-                amount: parseFloat(item.amount) || 0,
-                date: item.date,
-                type: item.type || 'expense',
-                isSavings: !!item.isSavings
-              });
-            });
-          }
-        });
+        if (Array.isArray(parsed.recurringExpenses)) {
+          importedRecurring = parsed.recurringExpenses.map(r => ({
+            ...r,
+            name: r.name || 'Bez nazwy',
+            amount: parseFloat(r.amount) || 0,
+            account: formatBankAccount(r.account || ''),
+            profile: r.profile || 'private'
+          }));
+        }
       } else if (Array.isArray(parsed)) {
         importedTransactions = parsed.map(t => ({
           ...t,
@@ -883,27 +1749,45 @@ function importDataJSON(e) {
           isSavings: !!t.isSavings
         }));
       } else {
-        alert('Błędny format pliku kopii zapasowej.');
+        showToastModal('Błąd importu', 'Plik JSON nie zawiera poprawnych danych.', false);
         return;
       }
 
-      await saveAllDataToDB(importedTransactions, importedBalances);
+      await saveAllDataToDB(importedTransactions, importedBalances, importedAutoSave, importedRecurring, importedSelectedRec, importedSyncAdrian);
       renderApp();
       checkAndRunMonthlyAutoBackup();
-      alert('Kopia zapasowa została pomyślnie wczytana!');
+      showToastModal('Sukces', 'Kopia zapasowa została pomyślnie wczytana!', true);
     } catch (err) {
-      alert('Nie udało się odczytać pliku JSON.');
+      console.error('Nie udało się odczytać pliku JSON:', err);
+      showToastModal('Błąd importu', 'Nie udało się przetworzyć pliku JSON. Upewnij się, że plik nie jest uszkodzony.', false);
     }
   };
   reader.readAsText(file);
 }
 
 async function clearCurrentProfileData() {
-  if (confirm(`Czy na pewno chcesz usunąć wszystkie transakcje dla profilu: ${currentProfile === 'private' ? 'Prywatny' : 'Firmowy'}?`)) {
-    const remainingTransactions = transactions.filter(t => (t.profile || 'private') !== currentProfile);
-    const newBalances = { ...initialBalances, [currentProfile]: 0 };
+  const profileLabel = currentProfile === 'private' ? 'Prywatny' : 'Firmowy';
+  const confirmed = await showConfirmModal(
+    `Czy na pewno chcesz usunąć wszystkie transakcje oraz notatnik dla profilu: ${profileLabel}?`,
+    'Wyczyszczenie profilu'
+  );
 
-    await saveAllDataToDB(remainingTransactions, newBalances);
+  if (confirmed) {
+    const remainingTransactions = transactions.filter(t => (t.profile || 'private') !== currentProfile);
+    const remainingRecurring = recurringExpenses.filter(r => (r.profile || 'private') !== currentProfile);
+    const newBalances = { ...initialBalances, [currentProfile]: 0 };
+    
+    const newAutoSaveConfig = {
+      ...autoSaveConfig,
+      [currentProfile]: { enabled: false, minAmount: 10, amount: 3 }
+    };
+
+    const newSelectedRec = {
+      ...selectedRecurringByProfile,
+      [currentProfile]: []
+    };
+
+    await saveAllDataToDB(remainingTransactions, newBalances, newAutoSaveConfig, remainingRecurring, newSelectedRec, syncAdrianEnabled);
     selectedGroups.clear();
     renderApp();
     checkAndRunMonthlyAutoBackup();
