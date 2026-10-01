@@ -9,6 +9,9 @@ const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
 let tokenClient = null;
 let googleAccessToken = null;
 
+// Stała nazwa pliku kopii zapasowej na Dysku Google
+const GDRIVE_BACKUP_FILENAME = 'budzet_domowy_kopia.json';
+
 // Stan aplikacji
 let currentProfile = 'private'; // 'private' lub 'company'
 let transactions = [];
@@ -664,6 +667,31 @@ function getExportPayload() {
   };
 }
 
+// Funkcja pomocnicza wyszukująca ID pliku kopii na Google Drive
+async function findExistingBackupFileId() {
+  const q = encodeURIComponent(`name = '${GDRIVE_BACKUP_FILENAME}' and mimeType = 'application/json' and trashed = false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
+    headers: {
+      'Authorization': `Bearer ${googleAccessToken}`
+    }
+  });
+
+  if (res.status === 401) {
+    handleGDriveLogout();
+    throw new Error('UNAUTHORIZED');
+  }
+
+  if (!res.ok) {
+    throw new Error(`Błąd HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  if (data.files && data.files.length > 0) {
+    return data.files[0].id;
+  }
+  return null;
+}
+
 async function saveToGoogleDrive() {
   if (!googleAccessToken) {
     showToastModal('Brak dostępu', 'Musisz się najpierw zalogować do Google Drive.', false);
@@ -672,38 +700,56 @@ async function saveToGoogleDrive() {
 
   const payload = getExportPayload();
   const jsonString = JSON.stringify(payload, null, 2);
-  const fileName = `budzet_domowy_kopia_${getLocalDateString()}.json`;
 
   try {
-    const metadata = {
-      name: fileName,
-      mimeType: 'application/json'
-    };
+    const existingFileId = await findExistingBackupFileId();
 
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    form.append('file', new Blob([jsonString], { type: 'application/json' }));
+    if (existingFileId) {
+      // Nadpisanie istniejącego pliku (PATCH)
+      const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=media`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${googleAccessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: jsonString
+      });
 
-    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${googleAccessToken}`
-      },
-      body: form
-    });
+      if (!res.ok) {
+        throw new Error(`Błąd HTTP ${res.status}`);
+      }
 
-    if (res.status === 401) {
-      handleGDriveLogout();
+      showToastModal('Sukces', 'Plik kopii na Google Drive został pomyślnie nadpisany!', true);
+    } else {
+      // Utworzenie pierwszego pliku (POST multipart)
+      const metadata = {
+        name: GDRIVE_BACKUP_FILENAME,
+        mimeType: 'application/json'
+      };
+
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+      form.append('file', new Blob([jsonString], { type: 'application/json' }));
+
+      const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${googleAccessToken}`
+        },
+        body: form
+      });
+
+      if (!res.ok) {
+        throw new Error(`Błąd HTTP ${res.status}`);
+      }
+
+      showToastModal('Sukces', 'Utworzono nową kopię zapasową na Google Drive!', true);
+    }
+  } catch (err) {
+    if (err.message === 'UNAUTHORIZED') {
       showToastModal('Sesja wygasła', 'Proszę zalogować się ponownie do Google Drive.', false);
       return;
     }
-
-    if (!res.ok) {
-      throw new Error(`Błąd HTTP ${res.status}`);
-    }
-
-    showToastModal('Sukces', 'Kopia zapasowa została zapisana na Google Drive!', true);
-  } catch (err) {
     console.error('Błąd podczas zapisu pliku na Google Drive:', err);
     showToastModal('Błąd zapisu', 'Nie udało się zapisać kopii na Google Drive.', false);
   }
@@ -716,7 +762,7 @@ async function listGoogleDriveFiles() {
   }
 
   try {
-    const q = encodeURIComponent("name contains 'budzet_domowy_kopia_' and mimeType = 'application/json' and trashed = false");
+    const q = encodeURIComponent(`name contains 'budzet_domowy_kopia' and mimeType = 'application/json' and trashed = false`);
     const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=createdTime%20desc&fields=files(id,name,createdTime)`, {
       headers: {
         'Authorization': `Bearer ${googleAccessToken}`
