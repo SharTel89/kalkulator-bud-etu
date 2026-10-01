@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Budżet Domowy</title>
   <link rel="stylesheet" href="style.css">
+  <!-- Google Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -96,7 +98,7 @@
           </div>
         </div>
 
-        <!-- Eksport / Import / Filtry / PDF -->
+        <!-- Eksport / Import / Filtry / PDF / Google Drive -->
         <div class="export-print-section hide-on-print">
           <h3>Eksport do PDF</h3>
           <div class="filter-row">
@@ -132,6 +134,20 @@
             <button id="import-json-btn" class="btn">Wczytaj kopię (JSON)</button>
             <input type="file" id="import-file-input" accept=".json" style="display: none;" />
           </div>
+
+          <hr />
+
+          <h3>Dysk Google</h3>
+          <div class="gdrive-status-box">
+            <span id="gdrive-status-text">Stan: Niepołączono</span>
+          </div>
+          <div class="gdrive-actions">
+            <button id="gdrive-auth-btn" class="btn btn-gdrive">Zaloguj do Google</button>
+            <button id="gdrive-save-btn" class="btn btn-gdrive" style="display: none;">Zapisz na Google Drive</button>
+            <button id="gdrive-load-btn" class="btn btn-gdrive" style="display: none;">Wczytaj z Google Drive</button>
+            <button id="gdrive-logout-btn" class="btn btn-secondary" style="display: none;">Wyloguj Google</button>
+          </div>
+
           <button id="clear-all-btn" class="btn btn-danger" style="margin-top: 10px; width: 100%;">Wyczyszczenie profilu</button>
         </div>
       </section>
@@ -187,6 +203,20 @@
         </ul>
       </section>
     </main>
+  </div>
+
+  <!-- Modal wyboru kopii z Google Drive -->
+  <div id="gdrive-file-modal" class="modal-overlay hide-on-print" style="display: none;">
+    <div class="modal-card">
+      <h3>Pliki kopii na Google Drive</h3>
+      <p style="margin-bottom: 12px; color: #ccc; font-size: 0.9rem;">Wybierz plik kopii do wczytania z Twojego Dysku Google:</p>
+      <ul id="gdrive-file-list" class="gdrive-file-list">
+        <!-- Lista plików ładowana dynamicznie -->
+      </ul>
+      <div class="modal-actions" style="justify-content: flex-end; margin-top: 15px;">
+        <button type="button" id="gdrive-file-modal-cancel-btn" class="btn-secondary">Anuluj</button>
+      </div>
+    </div>
   </div>
 
   <!-- Modal przypomnienia o kopii zapasowej -->
