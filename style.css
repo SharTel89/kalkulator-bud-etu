@@ -6,7 +6,7 @@
 }
 
 body {
-  background-color: #1a1a1a;
+  background-color: #121212;
   color: #e0e0e0;
   padding: 20px;
 }
@@ -24,6 +24,7 @@ header {
 header h1 {
   font-size: 2.2rem;
   color: #fff;
+  font-weight: bold;
 }
 
 header p {
@@ -45,10 +46,10 @@ header p {
 }
 
 .card {
-  background-color: #242424;
+  background-color: #1e1e1e;
   border-radius: 10px;
   padding: 20px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.4);
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -64,10 +65,6 @@ header p {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: #2d2d2d;
-  padding: 12px;
-  border-radius: 8px;
-  border-left: 4px solid #007bff;
 }
 
 .profile-toggle-group {
@@ -78,8 +75,8 @@ header p {
 
 .profile-btn {
   flex: 1;
-  background: #4a4a4a;
-  color: #fff;
+  background: #2d2d2d;
+  color: #aaa;
   border: none;
   padding: 10px;
   border-radius: 6px;
@@ -108,12 +105,17 @@ input[type="text"],
 input[type="number"],
 input[type="date"],
 select {
-  background-color: #1a1a1a;
-  border: 1px solid #444;
+  background-color: #121212;
+  border: 1px solid #333;
   color: #fff;
   padding: 10px;
   border-radius: 6px;
   width: 100%;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: #007bff;
 }
 
 .print-stats-wrapper {
@@ -129,7 +131,7 @@ select {
 }
 
 .stat-box {
-  background: #2d2d2d;
+  background: #282828;
   padding: 12px;
   border-radius: 6px;
   text-align: center;
@@ -144,8 +146,12 @@ select {
   margin-bottom: 4px;
 }
 
+.stat-box strong {
+  font-size: 1rem;
+}
+
 .total-balance-box {
-  background: #2d2d2d;
+  background: #282828;
   padding: 15px;
   border-radius: 6px;
   text-align: center;
@@ -198,7 +204,7 @@ select {
 }
 
 .autosave-section {
-  background: #2d2d2d;
+  background: #282828;
   padding: 15px;
   border-radius: 8px;
   display: flex;
@@ -225,23 +231,24 @@ select {
 }
 
 .btn {
-  background: #3a3a3a;
+  background: #333;
   color: #fff;
   border: none;
   padding: 10px 15px;
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.2s;
+  width: 100%;
+  font-weight: bold;
 }
 
 .btn:hover {
-  background: #4a4a4a;
+  background: #444;
 }
 
 .btn-primary-action {
   background: #007bff;
   color: #fff;
-  font-weight: bold;
 }
 
 .btn-primary-action:hover {
@@ -249,32 +256,31 @@ select {
 }
 
 .btn-secondary {
-  background: #4a4a4a;
+  background: #3a3a3a;
+  color: #ccc;
 }
 
 .btn-secondary:hover {
-  background: #5a5a5a;
+  background: #4a4a4a;
+  color: #fff;
 }
 
 .btn-danger {
-  background: #dc3545;
+  background: #d9534f;
   color: #fff;
 }
 
 .btn-danger:hover {
-  background: #bd2130;
+  background: #c9302c;
 }
 
 .btn-success {
   background: #28a745 !important;
   color: #fff !important;
-  font-weight: bold;
 }
 
 .btn-pdf {
   background: #007bff;
-  font-weight: bold;
-  width: 100%;
   margin-top: 10px;
 }
 
@@ -282,10 +288,24 @@ select {
   background: #0056b3;
 }
 
+/* Przycisk Google Drive dostosowany do stylu wyczyszczenia profilu */
+.btn-gdrive {
+  background: #007bff;
+  color: #fff;
+  width: 100%;
+  padding: 10px 15px;
+  border-radius: 6px;
+  font-weight: bold;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-gdrive:hover {
+  background: #0056b3;
+}
+
 .export-print-section {
-  background: #2d2d2d;
-  padding: 15px;
-  border-radius: 8px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -306,10 +326,15 @@ select {
   flex: 1;
 }
 
-/* Google Drive Status & Buttons */
+.gdrive-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .gdrive-status-box {
   font-size: 0.9rem;
-  padding: 6px 0;
+  color: #aaa;
 }
 
 .gdrive-actions {
@@ -318,27 +343,17 @@ select {
   gap: 8px;
 }
 
-.btn-gdrive {
-  background: #1a73e8;
-  color: #fff;
-  font-weight: bold;
-}
-
-.btn-gdrive:hover {
-  background: #1557b0;
-}
-
 hr {
   border: 0;
   height: 1px;
-  background: #444;
+  background: #333;
   margin: 5px 0;
 }
 
 .summary-list {
   max-height: 280px;
   overflow-y: auto;
-  background: #1a1a1a;
+  background: #121212;
   border-radius: 6px;
   padding: 10px;
 }
@@ -350,7 +365,7 @@ hr {
   font-weight: bold;
   padding: 6px 0 4px 0;
   margin-top: 6px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid #222;
 }
 
 .summary-group-header.income {
@@ -365,7 +380,7 @@ hr {
   display: flex;
   justify-content: space-between;
   padding: 8px 5px;
-  border-bottom: 1px solid #2d2d2d;
+  border-bottom: 1px solid #282828;
 }
 
 .grouped-item:last-child {
@@ -395,7 +410,7 @@ hr {
 }
 
 .transaction-item {
-  background: #2d2d2d;
+  background: #282828;
   padding: 12px 15px;
   border-radius: 6px;
   display: flex;
@@ -425,7 +440,7 @@ hr {
 }
 
 .action-btn {
-  background: #3a3a3a;
+  background: #333;
   border: none;
   color: #fff;
   padding: 6px 10px;
@@ -435,10 +450,10 @@ hr {
 }
 
 .action-btn:hover {
-  background: #5a5a5a;
+  background: #444;
 }
 
-/* Sekcja Notatnika / Stałych Wydatków */
+/* Notatnik / Stałe Wydatki */
 .recurring-form {
   display: flex;
   flex-direction: column;
@@ -447,19 +462,17 @@ hr {
 
 .recurring-actions-row {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
 }
 
 .recurring-actions-row .btn {
-  flex: 1 1 auto;
+  flex: 1;
   font-size: 0.8rem;
   padding: 8px 6px;
-  white-space: nowrap;
 }
 
 .selected-summary-box {
-  background: #2d2d2d;
+  background: #121212;
   padding: 12px;
   border-radius: 6px;
   display: flex;
@@ -475,7 +488,7 @@ hr {
 }
 
 .recurring-item {
-  background: #2d2d2d;
+  background: #282828;
   border-radius: 6px;
   padding: 12px;
   display: flex;
@@ -486,7 +499,7 @@ hr {
 }
 
 .recurring-item.selected {
-  background-color: #1d2d3d;
+  background-color: #1a2a3a;
   border-color: #007bff;
 }
 
@@ -513,7 +526,7 @@ hr {
   gap: 6px;
 }
 
-/* Modale i Nakładki */
+/* Modale i okna dialogowe */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -528,7 +541,7 @@ hr {
 }
 
 .modal-card {
-  background: #242424;
+  background: #1e1e1e;
   border-radius: 10px;
   padding: 24px;
   width: 90%;
@@ -558,47 +571,6 @@ hr {
   gap: 10px;
 }
 
-.toast-modal-card {
-  border-left: 4px solid #007bff;
-}
-
-.toast-modal-card.success {
-  border-left-color: #28a745;
-}
-
-.toast-modal-card.error {
-  border-left-color: #dc3545;
-}
-
-.gdrive-file-list {
-  list-style: none;
-  max-height: 250px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.gdrive-file-item {
-  background: #1a1a1a;
-  padding: 10px;
-  border-radius: 6px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.gdrive-file-info {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.gdrive-file-info small {
-  color: #aaa;
-}
-
-/* Drukowanie */
 @media print {
   .hide-on-print {
     display: none !important;
