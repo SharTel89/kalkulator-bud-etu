@@ -74,7 +74,7 @@
               <option value="expense">Wydatek</option>
               <option value="income">Przychód</option>
             </select>
-            <button type="submit" class="btn btn-primary-action">Dodaj</button>
+            <button type="submit" class="btn btn-primary">Dodaj</button>
           </form>
         </div>
 
@@ -94,7 +94,7 @@
               <label for="autosave-amount"><small>Kwota autooszczędzania (PLN):</small></label>
               <input type="text" id="autosave-amount" placeholder="np. 3,00" />
             </div>
-            <button id="save-autosave-btn" class="btn btn-primary-action" style="margin-top: 5px; width: 100%;">Zapisz ustawienia oszczędzania</button>
+            <button id="save-autosave-btn" class="btn btn-primary" style="margin-top: 5px; width: 100%;">Zapisz ustawienia oszczędzania</button>
           </div>
         </div>
 
@@ -184,7 +184,7 @@
           <input type="text" id="rec-name" placeholder="Nazwa (np. Czynsz, ZUS)" required />
           <input type="text" id="rec-amount" placeholder="Kwota (PLN)" required />
           <input type="text" id="rec-account" placeholder="Numer konta / IBAN" />
-          <button type="submit" class="btn btn-primary-action">+ Dodaj pozycję</button>
+          <button type="submit" class="btn btn-primary">+ Dodaj pozycję</button>
         </form>
 
         <div class="recurring-actions-row">
@@ -213,8 +213,8 @@
       <ul id="gdrive-file-list" class="gdrive-file-list">
         <!-- Lista plików ładowana dynamicznie -->
       </ul>
-      <div class="modal-actions" style="justify-content: flex-end; margin-top: 15px;">
-        <button type="button" id="gdrive-file-modal-cancel-btn" class="btn-secondary">Anuluj</button>
+      <div class="modal-actions modal-actions-single">
+        <button type="button" id="gdrive-file-modal-cancel-btn" class="btn btn-secondary">Anuluj</button>
       </div>
     </div>
   </div>
@@ -226,10 +226,11 @@
       <p style="margin-bottom: 18px; color: #ccc; line-height: 1.4;">
         Nie pobrano jeszcze kopii zapasowej w tym miesiącu. Zalecamy zapisanie pliku z danymi, aby zapobiec ich utracie.
       </p>
-      <div class="modal-actions" style="justify-content: flex-end;">
+      <div class="modal-actions">
+        <div></div>
         <div class="modal-right-actions">
-          <button type="button" id="modal-backup-dismiss-btn" class="btn-secondary">Później</button>
-          <button type="button" id="modal-backup-download-btn" class="btn-primary-action" style="padding: 8px 14px; border-radius: 6px; border: none; cursor: pointer;">Pobierz kopię</button>
+          <button type="button" id="modal-backup-dismiss-btn" class="btn btn-secondary">Później</button>
+          <button type="button" id="modal-backup-download-btn" class="btn btn-primary">Pobierz kopię</button>
         </div>
       </div>
     </div>
@@ -266,10 +267,10 @@
       </div>
 
       <div class="modal-actions">
-        <button type="button" id="delete-modal-btn" class="btn-danger">Usuń transakcję</button>
+        <button type="button" id="delete-modal-btn" class="btn btn-danger">Usuń transakcję</button>
         <div class="modal-right-actions">
-          <button type="button" id="cancel-modal-btn" class="btn-secondary">Anuluj</button>
-          <button type="button" id="save-modal-btn" class="btn-primary">Zapisz zmiany</button>
+          <button type="button" id="cancel-modal-btn" class="btn btn-secondary">Anuluj</button>
+          <button type="button" id="save-modal-btn" class="btn btn-primary">Zapisz zmiany</button>
         </div>
       </div>
     </div>
@@ -298,10 +299,10 @@
       </div>
 
       <div class="modal-actions">
-        <button type="button" id="delete-rec-modal-btn" class="btn-danger">Usuń</button>
+        <button type="button" id="delete-rec-modal-btn" class="btn btn-danger">Usuń</button>
         <div class="modal-right-actions">
-          <button type="button" id="cancel-rec-modal-btn" class="btn-secondary">Anuluj</button>
-          <button type="button" id="save-rec-modal-btn" class="btn-primary">Zapisz</button>
+          <button type="button" id="cancel-rec-modal-btn" class="btn btn-secondary">Anuluj</button>
+          <button type="button" id="save-rec-modal-btn" class="btn btn-primary">Zapisz</button>
         </div>
       </div>
     </div>
@@ -313,10 +314,11 @@
       <h3>Duplikacja transakcji</h3>
       <input type="hidden" id="duplicate-id" />
       <p id="duplicate-modal-text" style="margin-bottom: 18px; color: #ccc; line-height: 1.4;">Czy na pewno chcesz zduplikować tę transakcję z dzisiejszą datą?</p>
-      <div class="modal-actions" style="justify-content: flex-end;">
+      <div class="modal-actions">
+        <div></div>
         <div class="modal-right-actions">
-          <button type="button" id="cancel-duplicate-modal-btn" class="btn-secondary">Anuluj</button>
-          <button type="button" id="confirm-duplicate-modal-btn" class="btn-primary-action" style="padding: 8px 14px; border-radius: 6px; border: none; cursor: pointer;">Duplikuj</button>
+          <button type="button" id="cancel-duplicate-modal-btn" class="btn btn-secondary">Anuluj</button>
+          <button type="button" id="confirm-duplicate-modal-btn" class="btn btn-primary">Duplikuj</button>
         </div>
       </div>
     </div>
@@ -327,10 +329,11 @@
     <div class="modal-card">
       <h3 id="confirm-modal-title">Potwierdzenie</h3>
       <p id="confirm-modal-message" style="margin-bottom: 18px; color: #ccc; line-height: 1.4;"></p>
-      <div class="modal-actions" style="justify-content: flex-end;">
+      <div class="modal-actions">
+        <div></div>
         <div class="modal-right-actions">
-          <button type="button" id="confirm-modal-cancel-btn" class="btn-secondary">Anuluj</button>
-          <button type="button" id="confirm-modal-ok-btn" class="btn-primary-action" style="padding: 8px 14px; border-radius: 6px; border: none; cursor: pointer;">Potwierdź</button>
+          <button type="button" id="confirm-modal-cancel-btn" class="btn btn-secondary">Anuluj</button>
+          <button type="button" id="confirm-modal-ok-btn" class="btn btn-primary">Potwierdź</button>
         </div>
       </div>
     </div>
