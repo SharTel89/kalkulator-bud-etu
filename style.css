@@ -326,6 +326,7 @@ input:focus, select:focus {
   flex: 1;
 }
 
+/* Sekcja Google Drive */
 .gdrive-section {
   display: flex;
   flex-direction: column;
@@ -335,12 +336,65 @@ input:focus, select:focus {
 .gdrive-status-box {
   font-size: 0.9rem;
   color: #aaa;
+  background: #121212;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #282828;
 }
 
 .gdrive-actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Modal i lista plików Google Drive */
+.gdrive-file-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 5px;
+  margin: 10px 0;
+}
+
+.gdrive-file-item {
+  background: #282828;
+  border: 1px solid #333;
+  padding: 10px 12px;
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.gdrive-file-item:hover {
+  background-color: #303030;
+  border-color: #007bff;
+}
+
+.gdrive-file-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.gdrive-file-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gdrive-file-date {
+  font-size: 0.75rem;
+  color: #888;
 }
 
 hr {
