@@ -3,6 +3,12 @@ const DB_NAME = 'BudgetAppDB';
 const DB_VERSION = 2;
 let db = null;
 
+// Konfiguracja Google OAuth 2.0 & Drive API
+const GOOGLE_CLIENT_ID = '182085201225-hrmhauseh1m366tbg96qr7hd94mj00ie.apps.googleusercontent.com';
+const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
+let tokenClient = null;
+let googleAccessToken = null;
+
 // Stan aplikacji
 let currentProfile = 'private'; // 'private' lub 'company'
 let transactions = [];
@@ -199,6 +205,16 @@ const importJsonBtn = document.getElementById('import-json-btn');
 const importFileInput = document.getElementById('import-file-input');
 const clearAllBtn = document.getElementById('clear-all-btn');
 
+// Elementy Google Drive DOM
+const gdriveStatusText = document.getElementById('gdrive-status-text');
+const gdriveAuthBtn = document.getElementById('gdrive-auth-btn');
+const gdriveSaveBtn = document.getElementById('gdrive-save-btn');
+const gdriveLoadBtn = document.getElementById('gdrive-load-btn');
+const gdriveLogoutBtn = document.getElementById('gdrive-logout-btn');
+const gdriveFileModal = document.getElementById('gdrive-file-modal');
+const gdriveFileList = document.getElementById('gdrive-file-list');
+const gdriveFileModalCancelBtn = document.getElementById('gdrive-file-modal-cancel-btn');
+
 // Elementy modala edycji transakcji
 const editModal = document.getElementById('edit-modal');
 const editIdInput = document.getElementById('edit-id');
@@ -310,6 +326,7 @@ function closeAllCloseableModals() {
   closeEditModal();
   closeEditRecurringModal();
   closeDuplicateModal();
+  closeGDriveFileModal();
 
   if (confirmModal && confirmModal.style.display !== 'none') {
     confirmModal.style.display = 'none';
@@ -565,6 +582,294 @@ function saveAllDataToDB(newTransactions, newBalances, newAutoSave, newRecurring
   });
 }
 
+// --- LOGIKA GOOGLE DRIVE API & OAUTH ---
+function initGoogleAuth() {
+  const storedToken = sessionStorage.getItem('gdrive_access_token');
+  if (storedToken) {
+    googleAccessToken = storedToken;
+    updateGDriveUI(true);
+  } else {
+    updateGDriveUI(false);
+  }
+
+  if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GOOGLE_SCOPES,
+      callback: (response) => {
+        if (response.error) {
+          console.error('Błąd logowania Google:', response);
+          showToastModal('Błąd autoryzacji', 'Nie udało się zalogować do konta Google.', false);
+          return;
+        }
+        googleAccessToken = response.access_token;
+        sessionStorage.setItem('gdrive_access_token', googleAccessToken);
+        updateGDriveUI(true);
+        showToastModal('Zalogowano', 'Pomyślnie połączono z kontem Google Drive!', true);
+      }
+    });
+  }
+}
+
+function handleGDriveAuth() {
+  if (!tokenClient) {
+    if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+      initGoogleAuth();
+    } else {
+      showToastModal('Błąd ładowania SDK', 'Biblioteka Google Identity Services nie została jeszcze załadowana.', false);
+      return;
+    }
+  }
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+function handleGDriveLogout() {
+  googleAccessToken = null;
+  sessionStorage.removeItem('gdrive_access_token');
+  updateGDriveUI(false);
+  showToastModal('Wylogowano', 'Rozłączono z kontem Google Drive.', true);
+}
+
+function updateGDriveUI(isLoggedIn) {
+  if (!gdriveStatusText || !gdriveAuthBtn || !gdriveSaveBtn || !gdriveLoadBtn || !gdriveLogoutBtn) return;
+
+  if (isLoggedIn) {
+    gdriveStatusText.textContent = 'Stan: Zalogowano do Google';
+    gdriveStatusText.style.color = '#28a745';
+    gdriveAuthBtn.style.display = 'none';
+    gdriveSaveBtn.style.display = 'block';
+    gdriveLoadBtn.style.display = 'block';
+    gdriveLogoutBtn.style.display = 'block';
+  } else {
+    gdriveStatusText.textContent = 'Stan: Niepołączono';
+    gdriveStatusText.style.color = '#aaa';
+    gdriveAuthBtn.style.display = 'block';
+    gdriveSaveBtn.style.display = 'none';
+    gdriveLoadBtn.style.display = 'none';
+    gdriveLogoutBtn.style.display = 'none';
+  }
+}
+
+function getExportPayload() {
+  return {
+    initialBalances: initialBalances,
+    autoSaveConfig: autoSaveConfig,
+    syncAdrianEnabled: syncAdrianEnabled,
+    transactions: transactions,
+    recurringExpenses: recurringExpenses,
+    selectedRecurringByProfile: {
+      private: Array.from(selectedRecurringByProfile.private || []),
+      company: Array.from(selectedRecurringByProfile.company || [])
+    }
+  };
+}
+
+async function saveToGoogleDrive() {
+  if (!googleAccessToken) {
+    showToastModal('Brak dostępu', 'Musisz się najpierw zalogować do Google Drive.', false);
+    return;
+  }
+
+  const payload = getExportPayload();
+  const jsonString = JSON.stringify(payload, null, 2);
+  const fileName = `budzet_domowy_kopia_${getLocalDateString()}.json`;
+
+  try {
+    const metadata = {
+      name: fileName,
+      mimeType: 'application/json'
+    };
+
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', new Blob([jsonString], { type: 'application/json' }));
+
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${googleAccessToken}`
+      },
+      body: form
+    });
+
+    if (res.status === 401) {
+      handleGDriveLogout();
+      showToastModal('Sesja wygasła', 'Proszę zalogować się ponownie do Google Drive.', false);
+      return;
+    }
+
+    if (!res.ok) {
+      throw new Error(`Błąd HTTP ${res.status}`);
+    }
+
+    showToastModal('Sukces', 'Kopia zapasowa została zapisana na Google Drive!', true);
+  } catch (err) {
+    console.error('Błąd podczas zapisu pliku na Google Drive:', err);
+    showToastModal('Błąd zapisu', 'Nie udało się zapisać kopii na Google Drive.', false);
+  }
+}
+
+async function listGoogleDriveFiles() {
+  if (!googleAccessToken) {
+    showToastModal('Brak dostępu', 'Musisz się najpierw zalogować do Google Drive.', false);
+    return;
+  }
+
+  try {
+    const q = encodeURIComponent("name contains 'budzet_domowy_kopia_' and mimeType = 'application/json' and trashed = false");
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=createdTime%20desc&fields=files(id,name,createdTime)`, {
+      headers: {
+        'Authorization': `Bearer ${googleAccessToken}`
+      }
+    });
+
+    if (res.status === 401) {
+      handleGDriveLogout();
+      showToastModal('Sesja wygasła', 'Proszę zalogować się ponownie do Google Drive.', false);
+      return;
+    }
+
+    const data = await res.json();
+    if (!data.files || data.files.length === 0) {
+      showToastModal('Brak plików', 'Nie znaleziono zapisanych kopii zapasowych na Twoim Dysku Google.', false);
+      return;
+    }
+
+    renderGDriveFileList(data.files);
+    if (gdriveFileModal) gdriveFileModal.style.display = 'flex';
+  } catch (err) {
+    console.error('Błąd podczas pobierania listy plików z Google Drive:', err);
+    showToastModal('Błąd pobierania', 'Nie udało się pobrać listy plików z Google Drive.', false);
+  }
+}
+
+function renderGDriveFileList(files) {
+  if (!gdriveFileList) return;
+  gdriveFileList.innerHTML = '';
+
+  files.forEach(file => {
+    const li = document.createElement('li');
+    li.className = 'gdrive-file-item';
+    const dateStr = new Date(file.createdTime).toLocaleString('pl-PL');
+
+    li.innerHTML = `
+      <div class="gdrive-file-info">
+        <strong>${file.name}</strong>
+        <small>Utworzono: ${dateStr}</small>
+      </div>
+      <button class="btn btn-primary-action" style="padding: 6px 12px; font-size: 0.85rem;">Wczytaj</button>
+    `;
+
+    const loadBtn = li.querySelector('button');
+    loadBtn.addEventListener('click', () => {
+      loadFromGoogleDrive(file.id);
+      closeGDriveFileModal();
+    });
+
+    gdriveFileList.appendChild(li);
+  });
+}
+
+function closeGDriveFileModal() {
+  if (gdriveFileModal) gdriveFileModal.style.display = 'none';
+}
+
+async function loadFromGoogleDrive(fileId) {
+  if (!googleAccessToken) return;
+
+  const confirmed = await showConfirmModal(
+    'Wczytanie kopii zapasowej zastąpi dotychczasowe dane w aplikacji. Czy chcesz kontynuować?',
+    'Wczytaj z Google Drive'
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: {
+        'Authorization': `Bearer ${googleAccessToken}`
+      }
+    });
+
+    if (!res.ok) {
+      throw new Error(`Błąd HTTP ${res.status}`);
+    }
+
+    const parsed = await res.json();
+    await applyImportedPayload(parsed);
+  } catch (err) {
+    console.error('Błąd pobierania / przetwarzania pliku z Google Drive:', err);
+    showToastModal('Błąd wczytywania', 'Nie udało się przetworzyć pliku pobranego z Google Drive.', false);
+  }
+}
+
+async function applyImportedPayload(parsed) {
+  let importedTransactions = [];
+  let importedRecurring = [];
+  let importedBalances = { private: 0, company: 0 };
+  let importedAutoSave = {
+    private: { enabled: false, minAmount: 10, amount: 3 },
+    company: { enabled: false, minAmount: 10, amount: 3 }
+  };
+  let importedSyncAdrian = false;
+  let importedSelectedRec = { private: [], company: [] };
+
+  if (parsed && (parsed.initialBalances !== undefined || parsed.transactions !== undefined || parsed.autoSaveConfig !== undefined || parsed.recurringExpenses !== undefined || parsed.selectedRecurringByProfile !== undefined)) {
+    if (parsed.initialBalances) {
+      importedBalances = {
+        private: parseFloat(parsed.initialBalances.private) || 0,
+        company: parseFloat(parsed.initialBalances.company) || 0
+      };
+    }
+    if (parsed.autoSaveConfig) {
+      importedAutoSave = parsed.autoSaveConfig;
+    }
+    if (parsed.syncAdrianEnabled !== undefined) {
+      importedSyncAdrian = !!parsed.syncAdrianEnabled;
+    }
+    if (parsed.selectedRecurringByProfile) {
+      importedSelectedRec = {
+        private: Array.isArray(parsed.selectedRecurringByProfile.private) ? parsed.selectedRecurringByProfile.private : [],
+        company: Array.isArray(parsed.selectedRecurringByProfile.company) ? parsed.selectedRecurringByProfile.company : []
+      };
+    }
+    if (Array.isArray(parsed.transactions)) {
+      importedTransactions = parsed.transactions.map(t => ({
+        ...t,
+        description: t.description || t.title || 'Bez nazwy',
+        amount: parseFloat(t.amount) || 0,
+        profile: t.profile || 'private',
+        isSavings: !!t.isSavings
+      }));
+    }
+    if (Array.isArray(parsed.recurringExpenses)) {
+      importedRecurring = parsed.recurringExpenses.map(r => ({
+        ...r,
+        name: r.name || 'Bez nazwy',
+        amount: parseFloat(r.amount) || 0,
+        account: formatBankAccount(r.account || ''),
+        profile: r.profile || 'private'
+      }));
+    }
+  } else if (Array.isArray(parsed)) {
+    importedTransactions = parsed.map(t => ({
+      ...t,
+      description: t.description || t.title || 'Bez nazwy',
+      amount: parseFloat(t.amount) || 0,
+      profile: t.profile || 'private',
+      isSavings: !!t.isSavings
+    }));
+  } else {
+    showToastModal('Błąd importu', 'Dane pliku nie zawierają poprawnej struktury.', false);
+    return;
+  }
+
+  await saveAllDataToDB(importedTransactions, importedBalances, importedAutoSave, importedRecurring, importedSelectedRec, importedSyncAdrian);
+  renderApp();
+  checkAndRunMonthlyAutoBackup();
+  showToastModal('Sukces', 'Kopia zapasowa została pomyślnie wczytana!', true);
+}
+
 // --- LOGIKA MODALA PRZYPOMINAJĄCEGO O KOPII ---
 function getCurrentMonthKey() {
   const now = new Date();
@@ -631,6 +936,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     showToastModal('Błąd bazy danych', 'Nie udało się załadować lokalnej bazy IndexedDB.', false);
   }
 
+  initGoogleAuth();
   setupEventListeners();
   setupModalCloseListeners();
   renderApp();
@@ -809,6 +1115,13 @@ function setupEventListeners() {
     importFileInput.addEventListener('change', importDataJSON);
   }
   if (clearAllBtn) clearAllBtn.addEventListener('click', clearCurrentProfileData);
+
+  // Akcje Google Drive
+  if (gdriveAuthBtn) gdriveAuthBtn.addEventListener('click', handleGDriveAuth);
+  if (gdriveLogoutBtn) gdriveLogoutBtn.addEventListener('click', handleGDriveLogout);
+  if (gdriveSaveBtn) gdriveSaveBtn.addEventListener('click', saveToGoogleDrive);
+  if (gdriveLoadBtn) gdriveLoadBtn.addEventListener('click', listGoogleDriveFiles);
+  if (gdriveFileModalCancelBtn) gdriveFileModalCancelBtn.addEventListener('click', closeGDriveFileModal);
 
   if (cancelModalBtn) cancelModalBtn.addEventListener('click', closeEditModal);
   if (saveModalBtn) saveModalBtn.addEventListener('click', handleSaveEditModal);
@@ -1641,17 +1954,7 @@ function resetSearchInputs() {
 }
 
 function exportDataJSON() {
-  const exportPayload = {
-    initialBalances: initialBalances,
-    autoSaveConfig: autoSaveConfig,
-    syncAdrianEnabled: syncAdrianEnabled,
-    transactions: transactions,
-    recurringExpenses: recurringExpenses,
-    selectedRecurringByProfile: {
-      private: Array.from(selectedRecurringByProfile.private || []),
-      company: Array.from(selectedRecurringByProfile.company || [])
-    }
-  };
+  const exportPayload = getExportPayload();
 
   const jsonString = JSON.stringify(exportPayload, null, 2);
   const blob = new Blob([jsonString], { type: 'application/json' });
@@ -1693,70 +1996,7 @@ async function importDataJSON(e) {
   reader.onload = async (event) => {
     try {
       const parsed = JSON.parse(event.target.result);
-      let importedTransactions = [];
-      let importedRecurring = [];
-      let importedBalances = { private: 0, company: 0 };
-      let importedAutoSave = {
-        private: { enabled: false, minAmount: 10, amount: 3 },
-        company: { enabled: false, minAmount: 10, amount: 3 }
-      };
-      let importedSyncAdrian = false;
-      let importedSelectedRec = { private: [], company: [] };
-
-      if (parsed && (parsed.initialBalances !== undefined || parsed.transactions !== undefined || parsed.autoSaveConfig !== undefined || parsed.recurringExpenses !== undefined || parsed.selectedRecurringByProfile !== undefined)) {
-        if (parsed.initialBalances) {
-          importedBalances = {
-            private: parseFloat(parsed.initialBalances.private) || 0,
-            company: parseFloat(parsed.initialBalances.company) || 0
-          };
-        }
-        if (parsed.autoSaveConfig) {
-          importedAutoSave = parsed.autoSaveConfig;
-        }
-        if (parsed.syncAdrianEnabled !== undefined) {
-          importedSyncAdrian = !!parsed.syncAdrianEnabled;
-        }
-        if (parsed.selectedRecurringByProfile) {
-          importedSelectedRec = {
-            private: Array.isArray(parsed.selectedRecurringByProfile.private) ? parsed.selectedRecurringByProfile.private : [],
-            company: Array.isArray(parsed.selectedRecurringByProfile.company) ? parsed.selectedRecurringByProfile.company : []
-          };
-        }
-        if (Array.isArray(parsed.transactions)) {
-          importedTransactions = parsed.transactions.map(t => ({
-            ...t,
-            description: t.description || t.title || 'Bez nazwy',
-            amount: parseFloat(t.amount) || 0,
-            profile: t.profile || 'private',
-            isSavings: !!t.isSavings
-          }));
-        }
-        if (Array.isArray(parsed.recurringExpenses)) {
-          importedRecurring = parsed.recurringExpenses.map(r => ({
-            ...r,
-            name: r.name || 'Bez nazwy',
-            amount: parseFloat(r.amount) || 0,
-            account: formatBankAccount(r.account || ''),
-            profile: r.profile || 'private'
-          }));
-        }
-      } else if (Array.isArray(parsed)) {
-        importedTransactions = parsed.map(t => ({
-          ...t,
-          description: t.description || t.title || 'Bez nazwy',
-          amount: parseFloat(t.amount) || 0,
-          profile: t.profile || 'private',
-          isSavings: !!t.isSavings
-        }));
-      } else {
-        showToastModal('Błąd importu', 'Plik JSON nie zawiera poprawnych danych.', false);
-        return;
-      }
-
-      await saveAllDataToDB(importedTransactions, importedBalances, importedAutoSave, importedRecurring, importedSelectedRec, importedSyncAdrian);
-      renderApp();
-      checkAndRunMonthlyAutoBackup();
-      showToastModal('Sukces', 'Kopia zapasowa została pomyślnie wczytana!', true);
+      await applyImportedPayload(parsed);
     } catch (err) {
       console.error('Nie udało się odczytać pliku JSON:', err);
       showToastModal('Błąd importu', 'Nie udało się przetworzyć pliku JSON. Upewnij się, że plik nie jest uszkodzony.', false);
