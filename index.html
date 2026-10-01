@@ -8,35 +8,21 @@
 </head>
 <body>
 
-  <!-- Baner przypomnienia o kopii zapasowej -->
-  <div id="backup-banner" class="backup-banner hide-on-print" style="display: none;">
-    <div class="backup-banner-content">
-      <div class="backup-banner-text">
-        <strong>Kopia zapasowa</strong>
-        <span>Nie pobrano jeszcze kopii zapasowej w tym miesiącu. Zalecamy zapisanie pliku z danymi.</span>
-      </div>
-      <div class="backup-banner-actions">
-        <button id="banner-download-btn" class="btn btn-primary-action">Pobierz kopię</button>
-        <button id="banner-dismiss-btn" class="btn btn-secondary">Później</button>
-      </div>
-    </div>
-  </div>
-
   <div class="container">
     <header>
       <h1>Budżet Domowy</h1>
       <p id="profile-subtitle">Prywatny</p>
     </header>
 
-    <main class="grid-layout">
+    <main class="grid-layout-3col">
       <!-- Lewa kolumna: Ustawienia i Formularz -->
       <section class="card left-col">
         <div class="profile-section hide-on-print">
-          <label for="profile-select"><strong>Aktywny profil:</strong></label>
-          <select id="profile-select" class="btn-select">
-            <option value="private">Konto Prywatne</option>
-            <option value="company">Konto Firmowe</option>
-          </select>
+          <label><strong>Aktywny profil:</strong></label>
+          <div class="profile-toggle-group">
+            <button type="button" id="btn-profile-private" class="btn profile-btn active">Prywatny</button>
+            <button type="button" id="btn-profile-company" class="btn profile-btn">Firmowy</button>
+          </div>
         </div>
 
         <div class="initial-balance-section hide-on-print">
@@ -71,7 +57,13 @@
         </div>
 
         <div class="add-transaction-section hide-on-print">
-          <h3>Dodaj wpis</h3>
+          <div class="add-transaction-header">
+            <h3>Dodaj wpis</h3>
+            <label id="sync-adrian-wrapper" class="checkbox-label" style="display: none;">
+              <input type="checkbox" id="sync-adrian-checkbox" />
+              <span class="sync-adrian-text">Powiązanie Adrian→Praca</span>
+            </label>
+          </div>
           <form id="transaction-form">
             <input type="text" id="description" placeholder="Nazwa (np. Czynsz, Paliwo, Prąd)" required />
             <input type="text" id="amount" placeholder="Kwota (PLN)" required />
@@ -82,6 +74,26 @@
             </select>
             <button type="submit" class="btn btn-primary-action">Dodaj</button>
           </form>
+        </div>
+
+        <!-- Sekcja Autooszczędzania -->
+        <div class="autosave-section hide-on-print">
+          <h3>Autooszczędzanie</h3>
+          <label class="checkbox-label" style="margin-bottom: 12px; font-weight: bold; color: #fff;">
+            <input type="checkbox" id="autosave-enable-checkbox" />
+            Dodaj autooszczędzanie
+          </label>
+          <div id="autosave-inputs-wrapper" class="autosave-inputs" style="display: none;">
+            <div class="form-group-inline">
+              <label for="autosave-min-amount"><small>Wydatek od kwoty (PLN):</small></label>
+              <input type="text" id="autosave-min-amount" placeholder="np. 10,00" />
+            </div>
+            <div class="form-group-inline">
+              <label for="autosave-amount"><small>Kwota autooszczędzania (PLN):</small></label>
+              <input type="text" id="autosave-amount" placeholder="np. 3,00" />
+            </div>
+            <button id="save-autosave-btn" class="btn btn-primary-action" style="margin-top: 5px; width: 100%;">Zapisz ustawienia oszczędzania</button>
+          </div>
         </div>
 
         <!-- Eksport / Import / Filtry / PDF -->
@@ -124,8 +136,8 @@
         </div>
       </section>
 
-      <!-- Prawa kolumna: Podsumowania i Lista -->
-      <section class="card right-col">
+      <!-- Środkowa kolumna: Podsumowania i Lista Transakcji -->
+      <section class="card middle-col">
         <div class="hide-on-print">
           <h3>Podsumowanie według nazw / grup</h3>
           <div id="grouped-summary-container" class="summary-list">
@@ -147,7 +159,50 @@
 
         <button id="load-more-btn" class="btn btn-secondary hide-on-print" style="display: none; width: 100%; margin-top: 15px;">Pokaż więcej</button>
       </section>
+
+      <!-- Prawa kolumna: Notatnik Stałych Wydatków -->
+      <section class="card right-col hide-on-print">
+        <h3>Stałe wydatki (Notatnik)</h3>
+
+        <form id="recurring-form" class="recurring-form">
+          <input type="text" id="rec-name" placeholder="Nazwa (np. Czynsz, ZUS)" required />
+          <input type="text" id="rec-amount" placeholder="Kwota (PLN)" required />
+          <input type="text" id="rec-account" placeholder="Numer konta / IBAN" />
+          <button type="submit" class="btn btn-primary-action">+ Dodaj pozycję</button>
+        </form>
+
+        <div class="recurring-actions-row">
+          <button type="button" id="toggle-select-all-rec-btn" class="btn btn-secondary">Zaznacz / Odznacz wszystkie</button>
+          <button type="button" id="add-selected-rec-btn" class="btn btn-primary">Dodaj zaznaczone jako wydatek</button>
+          <button type="button" id="delete-selected-rec-btn" class="btn btn-danger">Usuń zaznaczone</button>
+        </div>
+
+        <div class="selected-summary-box">
+          <small>Suma zaznaczonych pozycji:</small>
+          <strong id="selected-recurring-total">0,00 PLN</strong>
+        </div>
+
+        <ul id="recurring-list" class="recurring-list">
+          <!-- Wpisy notatnika ładowane dynamicznie -->
+        </ul>
+      </section>
     </main>
+  </div>
+
+  <!-- Modal przypomnienia o kopii zapasowej -->
+  <div id="backup-modal" class="modal-overlay hide-on-print" style="display: none;">
+    <div class="modal-card">
+      <h3>Przypomnienie o kopii zapasowej</h3>
+      <p style="margin-bottom: 18px; color: #ccc; line-height: 1.4;">
+        Nie pobrano jeszcze kopii zapasowej w tym miesiącu. Zalecamy zapisanie pliku z danymi, aby zapobiec ich utracie.
+      </p>
+      <div class="modal-actions" style="justify-content: flex-end;">
+        <div class="modal-right-actions">
+          <button type="button" id="modal-backup-dismiss-btn" class="btn-secondary">Później</button>
+          <button type="button" id="modal-backup-download-btn" class="btn-primary-action" style="padding: 8px 14px; border-radius: 6px; border: none; cursor: pointer;">Pobierz kopię</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Modal edycji / usuwania transakcji -->
@@ -187,6 +242,75 @@
           <button type="button" id="save-modal-btn" class="btn-primary">Zapisz zmiany</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal edycji / usuwania wpisu w Notatniku -->
+  <div id="edit-recurring-modal" class="modal-overlay hide-on-print" style="display: none;">
+    <div class="modal-card">
+      <h3>Edytuj stały wydatek</h3>
+      
+      <input type="hidden" id="edit-rec-id" />
+      
+      <div class="form-group">
+        <label for="edit-rec-name">Nazwa:</label>
+        <input type="text" id="edit-rec-name" required />
+      </div>
+
+      <div class="form-group">
+        <label for="edit-rec-amount">Kwota (PLN):</label>
+        <input type="text" id="edit-rec-amount" required />
+      </div>
+
+      <div class="form-group">
+        <label for="edit-rec-account">Numer konta / IBAN:</label>
+        <input type="text" id="edit-rec-account" />
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="delete-rec-modal-btn" class="btn-danger">Usuń</button>
+        <div class="modal-right-actions">
+          <button type="button" id="cancel-rec-modal-btn" class="btn-secondary">Anuluj</button>
+          <button type="button" id="save-rec-modal-btn" class="btn-primary">Zapisz</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal potwierdzenia duplikacji transakcji -->
+  <div id="duplicate-modal" class="modal-overlay hide-on-print" style="display: none;">
+    <div class="modal-card">
+      <h3>Duplikacja transakcji</h3>
+      <input type="hidden" id="duplicate-id" />
+      <p id="duplicate-modal-text" style="margin-bottom: 18px; color: #ccc; line-height: 1.4;">Czy na pewno chcesz zduplikować tę transakcję z dzisiejszą datą?</p>
+      <div class="modal-actions" style="justify-content: flex-end;">
+        <div class="modal-right-actions">
+          <button type="button" id="cancel-duplicate-modal-btn" class="btn-secondary">Anuluj</button>
+          <button type="button" id="confirm-duplicate-modal-btn" class="btn-primary-action" style="padding: 8px 14px; border-radius: 6px; border: none; cursor: pointer;">Duplikuj</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Uniwersalny modal potwierdzenia (zamiast window.confirm) -->
+  <div id="confirm-modal" class="modal-overlay hide-on-print" style="display: none;">
+    <div class="modal-card">
+      <h3 id="confirm-modal-title">Potwierdzenie</h3>
+      <p id="confirm-modal-message" style="margin-bottom: 18px; color: #ccc; line-height: 1.4;"></p>
+      <div class="modal-actions" style="justify-content: flex-end;">
+        <div class="modal-right-actions">
+          <button type="button" id="confirm-modal-cancel-btn" class="btn-secondary">Anuluj</button>
+          <button type="button" id="confirm-modal-ok-btn" class="btn-primary-action" style="padding: 8px 14px; border-radius: 6px; border: none; cursor: pointer;">Potwierdź</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal statusu operacji (np. sukces/błąd wczytania JSON) -->
+  <div id="toast-status-modal" class="modal-overlay hide-on-print" style="display: none;">
+    <div class="modal-card toast-modal-card" style="text-align: center;">
+      <h3 id="toast-status-title">Status</h3>
+      <p id="toast-status-message" style="color: #ccc; line-height: 1.4; font-size: 1.05rem;"></p>
     </div>
   </div>
 
