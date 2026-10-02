@@ -1,45 +1,121 @@
-# 💰 Budżet Domowy (Local-First Budget App)
+Budżet Domowy 💰
+Prosta, w pełni client-side aplikacja webowa do zarządzania budżetem domowym i firmowym. Działa w całości w przeglądarce – dane przechowywane są lokalnie w IndexedDB, z opcjonalną synchronizacją kopii zapasowej do Google Drive.
 
-Lekka, szybka i w 100% prywatna aplikacja internetowa do zarządzania budżetem osobistym oraz firmowym[cite: 4, 5]. Tworzona w duchu **Local-First** — wszystkie dane przechowywane są wyłącznie w Twojej przeglądarce, bez pośrednictwa zewnętrznych serwerów czy chmury[cite: 3].
+✨ Funkcje
+👤 Dwa niezależne profile
+Prywatny i Firmowy – osobne transakcje, salda początkowe, ustawienia autooszczędzania i notatnik.
 
-Aplikacja waży niecałe **50 KB** i nie posiada żadnych zewnętrznych zależności (zero bibliotek, zero frameworków)[cite: 11].
+Szybkie przełączanie profilu przyciskami w panelu bocznym.
 
----
+💸 Transakcje
+Dodawanie przychodów i wydatków z nazwą, kwotą i datą.
 
-## ✨ Kluczowe Funkcje
+Edycja i usuwanie transakcji przez modal.
 
-- 🔒 **100% Prywatności & Local-First:** Dane finansowe są zapisywane w bazie `IndexedDB` w Twojej przeglądarce[cite: 4].
-- 🏷️ **Obsługa Wielu Profili:** Łatwe przełączanie pomiędzy kontem **Prywatnym** a **Firmowym** z osobnymi saldami i historią[cite: 4, 5].
-- 📊 **Dynamiczne Podsumowanie Grupowe:** Automatyczne kategoryzowanie transakcji z podziałem na **PRZYCHODY** i **WYDATKI** oraz opcją filtrowania po kliknięciu grupy[cite: 4, 10].
-- 💡 **Auto-Oszczędzanie:** Automatyczne tworzenie powiązanych mikro-transakcji oszczędnościowych dla wydatków pow. 10 PLN[cite: 4].
-- 🔍 **Zaawansowane Filtrowanie:** Wyszukiwanie transakcji po zakresie dat oraz typie (przychód/wydatek)[cite: 4].
-- 💾 **Kopie Zapasowe (JSON):** Prosty eksport i import pełnego zrzutu danych do pliku `.json` oraz wbudowany baner przypominający o comiesięcznym backupie[cite: 4, 5].
-- 🖨️ **Gotowość do Druku / PDF:** Wbudowany, dedykowany widok druku (`@media print`) pozwalający generować przejrzyste raporty do formatu PDF[cite: 4, 5, 6].
-- 🔢 **Czytelny Interfejs:** Automatyczne formatowanie kwot z separatorem tysięcy (spacją) dla wysokie czytelności[cite: 9, 10].
+Duplikacja transakcji z dzisiejszą datą jednym kliknięciem.
 
----
+Paginacja listy („Pokaż więcej”).
 
-## 🛠️ Technologie
+Automatyczne sortowanie po dacie.
 
-Aplikacja została zbudowana przy użyciu czystych technologii webowych (Vanilla JS)[cite: 11]:
+🐖 Autooszczędzanie
+Konfigurowalne dla każdego profilu osobno.
 
-- **HTML5** (Semantyczna struktura)[cite: 5, 11]
-- **CSS3** (Ciemny motyw, Flexbox, Grid, style `@media print`)[cite: 6, 11]
-- **JavaScript (ES6+)** (A synchroniczna logika, obróbka danych)[cite: 4, 11]
-- **IndexedDB API** (Lokalna baza danych w przeglądarce)[cite: 4]
+Próg wydatku + kwota oszczędzania.
 
----
+Automatyczne tworzenie wpisu „Auto-Oszczędzanie” przy większych wydatkach.
 
-## 🚀 Jak Uruchomić?
+Powiązanie z transakcją główną – edycja i usuwanie aktualizują wpis oszczędzania.
 
-Aplikacja nie wymaga instalowania Node.js, stawiania serwerów ani budowania projektu.
+📓 Notatnik stałych wydatków
+Lista powtarzalnych wydatków (czynsz, ZUS, rachunki itp.).
 
-1. Pobierz pliki z repozytorium (`index.html`, `app.js`, `style.css`)[cite: 11].
-2. Otwórz plik `index.html` w dowolnej nowoczesnej przeglądarce internetowej (Chrome, Firefox, Edge, Safari)[cite: 5].
-3. To wszystko! Aplikacja jest od razu gotowa do działania.
+Pole na numer konta / IBAN z automatycznym formatowaniem (NRB: 2-4-4-4-4-4-4).
 
----
+Zaznaczanie wielu pozycji i:
 
-## 📄 Licencja
+dodawanie ich jako wydatki jednym kliknięciem,
 
-Projekt udostępniany jest na licencji **MIT** — możesz go swobodnie pobierać, modyfikować i dostosowywać do własnych potrzeb.
+usuwanie hurtowe,
+
+podgląd sumy zaznaczonych.
+
+Sortowanie alfabetyczne.
+
+📊 Statystyki i podsumowania
+Miesięczne przychody, wydatki i wynik.
+
+Skumulowane saldo całkowite z przeniesieniem.
+
+Grupowanie transakcji po nazwie (osobno przychody i wydatki) z liczbą wystąpień i sumą.
+
+Kliknięcie grupy filtruje listę transakcji.
+
+Normalizacja tekstu (ignorowanie wielkości liter i polskich znaków).
+
+🔍 Filtrowanie
+Zakres dat (od–do).
+
+Typ transakcji (wszystkie / wydatki / przychody).
+
+Reset filtrów.
+
+☁️ Google Drive
+Logowanie przez Google Identity Services (OAuth 2.0).
+
+Zapis kopii zapasowej do pliku budzet_domowy_kopia.json na Dysku Google.
+
+Nadpisywanie istniejącej kopii (PATCH) lub tworzenie nowej (POST multipart).
+
+Lista zapisanych kopii z możliwością wczytania.
+
+Monit o zapis kopii przy próbie opuszczenia strony z niezapisanymi zmianami.
+
+💾 Kopie zapasowe
+Eksport / import pełnego stanu aplikacji do pliku JSON.
+
+Import obsługuje zarówno nowy format, jak i starsze wersje (sama tablica transakcji).
+
+Czyszczenie danych tylko dla aktywnego profilu.
+
+Ochrona beforeunload przy niezapisanych zmianach.
+
+🖨️ Drukowanie / PDF
+Przycisk „Drukuj / Zapisz do PDF”.
+
+Przed drukiem tymczasowo pokazuje wszystkie transakcje.
+
+Dedykowany arkusz @media print.
+
+🎨 UI/UX
+Ciemny motyw.
+
+Trzykolumnowy układ responsywny (na węższych ekranach przechodzi w jedną kolumnę).
+
+Modale zamiast natywnych alert / confirm:
+
+potwierdzenia (showConfirmModal),
+
+powiadomienia toast (showToastModal),
+
+modal duplikacji, edycji, wyboru plików Google Drive.
+
+Zamykanie modali klawiszem ESC lub kliknięciem w tło.
+
+Automatyczne formatowanie kwot (spacja co 3 cyfry, przecinek dziesiętny).
+
+Przyciski z feedbackiem „Zapisano ✓”.
+
+🛠️ Technologie
+Vanilla JavaScript (ES2020+) – bez frameworków.
+
+IndexedDB – lokalna baza danych (obiekty: transactions, settings, recurring).
+
+Google Identity Services + Drive API v3 – kopie zapasowe w chmurze.
+
+HTML5 + CSS3 – semantyczny markup, Grid, media queries, @media print.
+
+Blob API + URL.createObjectURL – eksport plików.
+
+sessionStorage / localStorage – tokeny sesyjne Google.
+
