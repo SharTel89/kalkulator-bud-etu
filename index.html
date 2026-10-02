@@ -219,18 +219,18 @@
     </div>
   </div>
 
-  <!-- Modal przypomnienia o kopii zapasowej -->
-  <div id="backup-modal" class="modal-overlay hide-on-print" style="display: none;">
+  <!-- Modal potwierdzenia zapisu kopii zapasowej na Google Drive przy zamykaniu -->
+  <div id="gdrive-confirm-modal" class="modal-overlay hide-on-print" style="display: none;">
     <div class="modal-card">
-      <h3>Przypomnienie o kopii zapasowej</h3>
+      <h3>Kopia zapasowa na Google Drive</h3>
       <p style="margin-bottom: 18px; color: #ccc; line-height: 1.4;">
-        Nie pobrano jeszcze kopii zapasowej w tym miesiącu. Zalecamy zapisanie pliku z danymi, aby zapobiec ich utracie.
+        Czy chcesz zapisać aktualne dane jako kopię zapasową na Dysku Google przed opuszczeniem strony?
       </p>
       <div class="modal-actions">
         <div></div>
         <div class="modal-right-actions">
-          <button type="button" id="modal-backup-dismiss-btn" class="btn btn-secondary">Później</button>
-          <button type="button" id="modal-backup-download-btn" class="btn btn-primary">Pobierz kopię</button>
+          <button type="button" id="gdrive-confirm-dismiss-btn" class="btn btn-secondary">Nie zapisuj</button>
+          <button type="button" id="gdrive-confirm-save-btn" class="btn btn-primary">Zapisz na Google Drive</button>
         </div>
       </div>
     </div>
