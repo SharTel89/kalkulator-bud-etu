@@ -28,6 +28,9 @@ let currentSearchFilter = null;
 let showSavingsEntries = false;
 let selectedGroups = new Set();
 
+// Flaga określająca, czy użytkownik ma niezapisane lokalne zmiany
+let hasUnsavedChanges = false;
+
 // Zmienna przechowująca identyfikator aktywnego timera toastu
 let toastTimeout = null;
 
@@ -218,6 +221,11 @@ const gdriveFileModal = document.getElementById('gdrive-file-modal');
 const gdriveFileList = document.getElementById('gdrive-file-list');
 const gdriveFileModalCancelBtn = document.getElementById('gdrive-file-modal-cancel-btn');
 
+// Modal potwierdzenia zapisu na Google Drive przy wyjściu
+const gdriveConfirmModal = document.getElementById('gdrive-confirm-modal');
+const gdriveConfirmSaveBtn = document.getElementById('gdrive-confirm-save-btn');
+const gdriveConfirmDismissBtn = document.getElementById('gdrive-confirm-dismiss-btn');
+
 // Elementy modala edycji transakcji
 const editModal = document.getElementById('edit-modal');
 const editIdInput = document.getElementById('edit-id');
@@ -247,6 +255,14 @@ const confirmModalCancelBtn = document.getElementById('confirm-modal-cancel-btn'
 const toastStatusModal = document.getElementById('toast-status-modal');
 const toastStatusTitle = document.getElementById('toast-status-title');
 const toastStatusMessage = document.getElementById('toast-status-message');
+
+function markUnsavedChanges() {
+  hasUnsavedChanges = true;
+}
+
+function clearUnsavedChanges() {
+  hasUnsavedChanges = false;
+}
 
 function hideToastModal() {
   if (!toastStatusModal) return;
@@ -330,6 +346,7 @@ function closeAllCloseableModals() {
   closeEditRecurringModal();
   closeDuplicateModal();
   closeGDriveFileModal();
+  closeGDriveConfirmModal();
 
   if (confirmModal && confirmModal.style.display !== 'none') {
     confirmModal.style.display = 'none';
@@ -349,8 +366,6 @@ function setupModalCloseListeners() {
 
   const modals = document.querySelectorAll('.modal-overlay');
   modals.forEach((modal) => {
-    if (modal.id === 'backup-modal') return;
-
     modal.addEventListener('click', (e) => {
       if (e.target === modal) {
         closeAllCloseableModals();
@@ -469,7 +484,10 @@ function saveTransactionToDB(transaction) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('transactions', 'readwrite');
     tx.objectStore('transactions').put(transaction);
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      markUnsavedChanges();
+      resolve();
+    };
     tx.onerror = (e) => reject(e.target.error);
   });
 }
@@ -478,7 +496,10 @@ function deleteTransactionFromDB(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('transactions', 'readwrite');
     tx.objectStore('transactions').delete(id);
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      markUnsavedChanges();
+      resolve();
+    };
     tx.onerror = (e) => reject(e.target.error);
   });
 }
@@ -487,7 +508,10 @@ function saveRecurringToDB(item) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('recurring', 'readwrite');
     tx.objectStore('recurring').put(item);
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      markUnsavedChanges();
+      resolve();
+    };
     tx.onerror = (e) => reject(e.target.error);
   });
 }
@@ -496,7 +520,10 @@ function deleteRecurringFromDB(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('recurring', 'readwrite');
     tx.objectStore('recurring').delete(id);
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      markUnsavedChanges();
+      resolve();
+    };
     tx.onerror = (e) => reject(e.target.error);
   });
 }
@@ -505,7 +532,10 @@ function saveBalancesToDB() {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('settings', 'readwrite');
     tx.objectStore('settings').put({ key: 'initialBalances', value: initialBalances });
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      markUnsavedChanges();
+      resolve();
+    };
     tx.onerror = (e) => reject(e.target.error);
   });
 }
@@ -514,7 +544,10 @@ function saveAutoSaveSettingsToDB() {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('settings', 'readwrite');
     tx.objectStore('settings').put({ key: 'autoSaveConfig', value: autoSaveConfig });
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      markUnsavedChanges();
+      resolve();
+    };
     tx.onerror = (e) => reject(e.target.error);
   });
 }
@@ -523,7 +556,10 @@ function saveSyncAdrianToDB() {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('settings', 'readwrite');
     tx.objectStore('settings').put({ key: 'syncAdrianEnabled', value: syncAdrianEnabled });
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      markUnsavedChanges();
+      resolve();
+    };
     tx.onerror = (e) => reject(e.target.error);
   });
 }
@@ -536,7 +572,10 @@ function saveSelectedRecurringToDB() {
       company: Array.from(selectedRecurringByProfile.company || [])
     };
     tx.objectStore('settings').put({ key: 'selectedRecurringByProfile', value: serializable });
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      markUnsavedChanges();
+      resolve();
+    };
     tx.onerror = (e) => reject(e.target.error);
   });
 }
@@ -579,6 +618,7 @@ function saveAllDataToDB(newTransactions, newBalances, newAutoSave, newRecurring
           company: new Set(newSelectedRec.company || [])
         };
       }
+      markUnsavedChanges();
       resolve();
     };
     tx.onerror = (e) => reject(e.target.error);
@@ -692,10 +732,10 @@ async function findExistingBackupFileId() {
   return null;
 }
 
-async function saveToGoogleDrive() {
+async function saveToGoogleDrive(showToast = true) {
   if (!googleAccessToken) {
-    showToastModal('Brak dostępu', 'Musisz się najpierw zalogować do Google Drive.', false);
-    return;
+    if (showToast) showToastModal('Brak dostępu', 'Musisz się najpierw zalogować do Google Drive.', false);
+    return false;
   }
 
   const payload = getExportPayload();
@@ -719,7 +759,9 @@ async function saveToGoogleDrive() {
         throw new Error(`Błąd HTTP ${res.status}`);
       }
 
-      showToastModal('Sukces', 'Plik kopii na Google Drive został pomyślnie nadpisany!', true);
+      clearUnsavedChanges();
+      if (showToast) showToastModal('Sukces', 'Plik kopii na Google Drive został pomyślnie nadpisany!', true);
+      return true;
     } else {
       // Utworzenie pierwszego pliku (POST multipart)
       const metadata = {
@@ -743,15 +785,18 @@ async function saveToGoogleDrive() {
         throw new Error(`Błąd HTTP ${res.status}`);
       }
 
-      showToastModal('Sukces', 'Utworzono nową kopię zapasową na Google Drive!', true);
+      clearUnsavedChanges();
+      if (showToast) showToastModal('Sukces', 'Utworzono nową kopię zapasową na Google Drive!', true);
+      return true;
     }
   } catch (err) {
     if (err.message === 'UNAUTHORIZED') {
-      showToastModal('Sesja wygasła', 'Proszę zalogować się ponownie do Google Drive.', false);
-      return;
+      if (showToast) showToastModal('Sesja wygasła', 'Proszę zalogować się ponownie do Google Drive.', false);
+      return false;
     }
     console.error('Błąd podczas zapisu pliku na Google Drive:', err);
-    showToastModal('Błąd zapisu', 'Nie udało się zapisać kopii na Google Drive.', false);
+    if (showToast) showToastModal('Błąd zapisu', 'Nie udało się zapisać kopii na Google Drive.', false);
+    return false;
   }
 }
 
@@ -911,49 +956,50 @@ async function applyImportedPayload(parsed) {
   }
 
   await saveAllDataToDB(importedTransactions, importedBalances, importedAutoSave, importedRecurring, importedSelectedRec, importedSyncAdrian);
+  clearUnsavedChanges();
   renderApp();
-  checkAndRunMonthlyAutoBackup();
   showToastModal('Sukces', 'Kopia zapasowa została pomyślnie wczytana!', true);
 }
 
-// --- LOGIKA MODALA PRZYPOMINAJĄCEGO O KOPII ---
-function getCurrentMonthKey() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function checkAndRunMonthlyAutoBackup() {
-  const currentMonthKey = getCurrentMonthKey();
-  const isDownloaded = localStorage.getItem(`backup_downloaded_${currentMonthKey}`);
-  const isDismissedInSession = sessionStorage.getItem(`backup_dismissed_${currentMonthKey}`);
-
-  const backupModal = document.getElementById('backup-modal');
-  if (!backupModal) return;
-
-  if ((transactions.length > 0 || recurringExpenses.length > 0) && !isDownloaded && !isDismissedInSession) {
-    backupModal.style.display = 'flex';
-  } else {
-    backupModal.style.display = 'none';
+// --- LOGIKA POTWIERDZENIA ZAPISU KOPbackup DRIVE PRZY ZAMYKANIU STRONY ---
+function showGDriveConfirmModal() {
+  if (gdriveConfirmModal) {
+    gdriveConfirmModal.style.display = 'flex';
   }
 }
 
-function setupBackupModalEvents() {
-  const downloadBtn = document.getElementById('modal-backup-download-btn');
-  const dismissBtn = document.getElementById('modal-backup-dismiss-btn');
-  const backupModal = document.getElementById('backup-modal');
+function closeGDriveConfirmModal() {
+  if (gdriveConfirmModal) {
+    gdriveConfirmModal.style.display = 'none';
+  }
+}
 
-  if (downloadBtn) {
-    downloadBtn.addEventListener('click', () => {
-      exportDataJSON();
-      if (backupModal) backupModal.style.display = 'none';
+function setupBeforeUnloadAndGDriveConfirm() {
+  // Ochrona przed zacięciem/zostawieniem niezapisanych danych w przeglądarce
+  window.addEventListener('beforeunload', (e) => {
+    if (hasUnsavedChanges) {
+      e.preventDefault();
+      e.returnValue = ''; // Standardowy mechanizm przeglądarki wymagany dla monitu o wyjściu
+    }
+  });
+
+  if (gdriveConfirmSaveBtn) {
+    gdriveConfirmSaveBtn.addEventListener('click', async () => {
+      if (!googleAccessToken) {
+        closeGDriveConfirmModal();
+        handleGDriveAuth();
+        return;
+      }
+      const success = await saveToGoogleDrive(true);
+      if (success) {
+        closeGDriveConfirmModal();
+      }
     });
   }
 
-  if (dismissBtn) {
-    dismissBtn.addEventListener('click', () => {
-      const currentMonthKey = getCurrentMonthKey();
-      sessionStorage.setItem(`backup_dismissed_${currentMonthKey}`, 'true');
-      if (backupModal) backupModal.style.display = 'none';
+  if (gdriveConfirmDismissBtn) {
+    gdriveConfirmDismissBtn.addEventListener('click', () => {
+      closeGDriveConfirmModal();
     });
   }
 }
@@ -985,8 +1031,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initGoogleAuth();
   setupEventListeners();
   setupModalCloseListeners();
+  setupBeforeUnloadAndGDriveConfirm();
   renderApp();
-  checkAndRunMonthlyAutoBackup();
 });
 
 function setProfile(profile) {
@@ -1015,8 +1061,6 @@ function setProfile(profile) {
 }
 
 function setupEventListeners() {
-  setupBackupModalEvents();
-
   if (toastStatusModal) {
     toastStatusModal.addEventListener('click', () => {
       hideToastModal();
@@ -1165,7 +1209,7 @@ function setupEventListeners() {
   // Akcje Google Drive
   if (gdriveAuthBtn) gdriveAuthBtn.addEventListener('click', handleGDriveAuth);
   if (gdriveLogoutBtn) gdriveLogoutBtn.addEventListener('click', handleGDriveLogout);
-  if (gdriveSaveBtn) gdriveSaveBtn.addEventListener('click', saveToGoogleDrive);
+  if (gdriveSaveBtn) gdriveSaveBtn.addEventListener('click', () => saveToGoogleDrive(true));
   if (gdriveLoadBtn) gdriveLoadBtn.addEventListener('click', listGoogleDriveFiles);
   if (gdriveFileModalCancelBtn) gdriveFileModalCancelBtn.addEventListener('click', closeGDriveFileModal);
 
@@ -1284,7 +1328,6 @@ async function duplicateTransaction(id) {
   }
 
   renderApp();
-  checkAndRunMonthlyAutoBackup();
   showToastModal('Sukces', 'Transakcja została pomyślnie zduplikowana!', true);
 }
 
@@ -1320,7 +1363,6 @@ async function handleAddTransaction(e) {
   dateInput.value = getLocalDateString();
 
   renderApp();
-  checkAndRunMonthlyAutoBackup();
 }
 
 // --- LOGIKA NOTATNIKA STAŁYCH WYDATKÓW ---
@@ -1349,7 +1391,6 @@ async function handleAddRecurring(e) {
   recAccountInput.value = '';
 
   renderRecurringList();
-  checkAndRunMonthlyAutoBackup();
 }
 
 async function handleToggleSelectAllRecurring() {
@@ -1392,7 +1433,6 @@ async function handleAddSelectedRecurringAsExpense() {
   }
 
   renderApp();
-  checkAndRunMonthlyAutoBackup();
   showToastModal('Sukces', `Dodano zaznaczone wydatki (${selectedItems.length}) do listy transakcji.`, true);
 }
 
@@ -1419,7 +1459,6 @@ async function handleDeleteSelectedRecurring() {
 
     await saveSelectedRecurringToDB();
     renderRecurringList();
-    checkAndRunMonthlyAutoBackup();
   }
 }
 
@@ -1475,7 +1514,6 @@ function renderRecurringList() {
       const todayStr = getLocalDateString();
       await addExpenseTransaction(item.name, item.amount, todayStr);
       renderApp();
-      checkAndRunMonthlyAutoBackup();
       showToastModal('Sukces', `Dodano wydatek "${item.name}" (${formatCurrency(item.amount)}).`, true);
     });
 
@@ -2017,11 +2055,7 @@ function exportDataJSON() {
     URL.revokeObjectURL(objectUrl);
   }, 1000);
 
-  const currentMonthKey = getCurrentMonthKey();
-  localStorage.setItem(`backup_downloaded_${currentMonthKey}`, 'true');
-
-  const backupModal = document.getElementById('backup-modal');
-  if (backupModal) backupModal.style.display = 'none';
+  clearUnsavedChanges();
 }
 
 async function importDataJSON(e) {
@@ -2076,6 +2110,5 @@ async function clearCurrentProfileData() {
     await saveAllDataToDB(remainingTransactions, newBalances, newAutoSaveConfig, remainingRecurring, newSelectedRec, syncAdrianEnabled);
     selectedGroups.clear();
     renderApp();
-    checkAndRunMonthlyAutoBackup();
   }
 }
