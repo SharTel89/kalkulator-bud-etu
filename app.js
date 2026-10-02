@@ -663,7 +663,8 @@ function handleGDriveAuth() {
       return;
     }
   }
-  tokenClient.requestAccessToken({ prompt: 'consent' });
+  // Usunięto prompt: 'consent', aby nie wymuszać ponownego potwierdzania za każdym razem
+  tokenClient.requestAccessToken();
 }
 
 function handleGDriveLogout() {
