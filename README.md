@@ -119,3 +119,55 @@ Blob API + URL.createObjectURL – eksport plików.
 
 sessionStorage / localStorage – tokeny sesyjne Google.
 
+📁 Struktura projektu
+text
+.
+├── index.html   # Struktura interfejsu i modali
+├── style.css    # Ciemny motyw, layout 3-kolumnowy, style druku
+└── app.js       # Cała logika: DB, UI, Google Drive, import/export
+🚀 Uruchomienie
+Sklonuj repozytorium:
+
+bash
+git clone https://github.com/twoj-user/budzet-domowy.git
+Otwórz index.html w nowoczesnej przeglądarce (Chrome, Edge, Firefox).
+
+Ze względu na użycie Google OAuth zalecane jest serwowanie przez lokalny serwer HTTP, np.:
+
+bash
+npx serve .
+# lub
+python -m http.server 8080
+Aby korzystać z Google Drive:
+
+Utwórz projekt w Google Cloud Console.
+
+Włącz Google Drive API.
+
+Utwórz OAuth 2.0 Client ID typu Web application.
+
+Dodaj swoje origin (np. http://localhost:8080) do Authorized JavaScript origins.
+
+W app.js podmień GOOGLE_CLIENT_ID na swój identyfikator klienta.
+
+🔐 Bezpieczeństwo i prywatność
+Wszystkie dane przechowywane są lokalnie w przeglądarce.
+
+Do Google Drive wysyłany jest tylko plik JSON z danymi, i tylko po zalogowaniu użytkownika.
+
+Token dostępu przechowywany jest wyłącznie w sessionStorage (kasowany po zamknięciu karty).
+
+🗺️ Plan rozwoju
+□ Eksport do CSV / XLSX.
+□ Wykresy (Chart.js) – trendy miesięczne i kategorie.
+□ Wielojęzyczność (PL / EN).
+□ Testy jednostkowe (Jest / Vitest).
+□ PWA z trybem offline i instalacją na urządzeniu.
+□ Refaktoryzacja na moduły ES (db.js, ui.js, gdrive.js, utils.js).
+📜 Licencja
+MIT – możesz swobodnie używać, modyfikować i rozpowszechniać.
+
+🙌 Wkład
+Pull requesty i zgłoszenia błędów są mile widziane. Jeśli masz pomysł na nową funkcję – otwórz Issue i opisz propozycję.
+
+Miłego budżetowania! 💚
